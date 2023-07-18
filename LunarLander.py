@@ -5,6 +5,7 @@ import gym
 import numpy as np
 import mujoco_py as mj
 import tensorflow as tf
+from os.path import exists
 
 """
 Reverb (dm-reverb) is an efficient and easy-to-use data storage and transport system designed for machine learning research.
@@ -30,13 +31,15 @@ from tf_agents.metrics import tf_metrics
 
 class LunarLander(object):
 
-    def __init__(self) -> None:
+    def __init__(self, model_name=None) -> None:
         self.replay_buffer_max_length = 100000
         self.num_eval_episodes = 10
         self.num_iterations = 20000
-        self.log_interval = 200
+        self.log_interval = 20 #200
         self.eval_interval = 1000
         self.batch_size = 64
+
+        self.model_name = model_name
 
         self._env = gym.make('LunarLander-v2') #,
             # continuous: bool = False,
@@ -46,18 +49,32 @@ class LunarLander(object):
             # turbulence_power: float = 1.5)
 
         self._py_env = suite_gym.wrap_env(self._env)
-        #self._py_env = suite_gym.load('LunarLander-v2')
         self._tf_env = tf_py_environment.TFPyEnvironment(self._py_env)
-        self.ly_params = [64, 128]
+        self.observations = self._tf_env.time_step_spec().observation.shape[0]
+        self.ly_params = [self.observations, self.batch_size, self.batch_size] #[8, 64, 64]
 
-        #print(self._tf_env.time_step_spec())
-
+        print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
         print('Observation Spec: {}'.format(self._tf_env.time_step_spec().observation))
         print('Reward Spec: {}'.format(self._tf_env.time_step_spec().reward))
         print('Action Spec: {}'.format(self._tf_env.action_spec()))
 
-    def train_agent(self):
+    def save_model(self, model_name=None, q_net=None):
+        """Save trained weights"""
+        if model_name and q_net:
+            q_net.save_weights(model_name)
+
+    def load_model(self, model_name=None, q_net=None):
+        """Load previosly saved weights"""
+        if model_name and q_net and exists(model_name):
+            q_net.load_weights(model_name)
+
+    def prepare(self):
         """"""
+        self.model_prepare()
+        self.reply_buffer_prepare()
+
+    def train_agent(self):
+        """Train network"""
         self.agent.train_step_counter.assign(0)
         avg = self.compute_avg_return(self._tf_env, self.policy, self.num_eval_episodes)
         returns = [avg]
@@ -82,29 +99,14 @@ class LunarLander(object):
 
             # Collect a few steps and save to the replay buffer.
             time_step, _ = driver.run(time_step)
-
-            # Sample a batch of data from the buffer and update the agent's network.
-            #print('Iterator: {}'.format(self.dataset.element_spec))
-            #print('Iterator: {}'.format(self.replay_buffer.data_spec))
-
             experience, _ = next(iterator)
-            #print('Experience: {}'.format(experience))
-
-            #batched_exp = tf.nest.map_structure(
-            #    lambda t: tf.expand_dims(t, axis=0),
-            #    experience
-            #)
 
             batched_exp = tf.nest.map_structure(
                 lambda t: composite.squeeze(t, axis=2),
                 experience
             )
 
-            #print('New Experience: {}'.format(batched_exp))
-
-            #print('self.agent: {}'.format(self.agent.training_data_spec))
             train_loss = self.agent.train(batched_exp).loss
-
             step = self.agent.train_step_counter.numpy()
 
             if step % self.log_interval == 0:
@@ -115,6 +117,9 @@ class LunarLander(object):
                 print('step = {0}: Average Return = {1}'.format(step, avg_return))
                 returns.append(avg_return)
 
+        #save trained weights
+        self.save_model(self.model_name, self.q_net)
+
     def compute_avg_return(self, environment, policy, num_episodes=10):
         """"""
         total_return = 0.0
@@ -122,26 +127,33 @@ class LunarLander(object):
 
             time_step = environment.reset()
             episode_return = 0.0
+            steps = 0
 
             while not time_step.is_last():
                 action_step = policy.action(time_step)
                 time_step = environment.step(action_step.action)
                 episode_return += time_step.reward
+                steps += 1
 
-            print('Episode: {} return: {}'.format(eps, episode_return))
+            print('Episode: {} return: {} steps {}'.format(eps, episode_return, steps))
             total_return += episode_return
 
         avg_return = total_return / num_episodes
         return avg_return.numpy()[0]
 
     def model_prepare(self):
-        """Generate model"""
+        """Generate model
+        Load previosly detected weights if needed
+        """
         action_tensor_spec = self._tf_env.action_spec()
         time_step_tensor_spec = self._tf_env.time_step_spec()
 
         self.num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
-        #print('Number actions: {}'.format(self.num_actions))
+        print('Number actions: {}'.format(self.num_actions))
 
+        # QNetwork consists of a sequence of Dense layers followed by a dense layer
+        # with `num_actions` units to generate one q_value per available action as
+        # its output.
         layers = [self.gen_layer(num_units) for num_units in self.ly_params]
 
         """
@@ -154,6 +166,9 @@ class LunarLander(object):
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
         self.q_net = sequential.Sequential(layers + [q_values_layer])
+
+        self.load_model(self.model_name, self.q_net)
+
         optimizer = tf.keras.optimizers.Adam() #use lerning rate by default 0.001
         self.train_step_counter = tf.Variable(0)
 
@@ -190,10 +205,6 @@ class LunarLander(object):
 
     def reply_buffer_prepare(self):
         """Prepre replay buffer"""
-
-        #print('collect_data_spec: {}'.format(self.agent.collect_data_spec))
-        #print('collect_data_spec._fields: {}'.format(self.agent.collect_data_spec._fields))
-
         replay_buffer_signature = tensor_spec.from_spec(self.agent.collect_data_spec)
         replay_buffer_signature = tensor_spec.add_outer_dim(replay_buffer_signature)
 
@@ -207,9 +218,6 @@ class LunarLander(object):
             signature=None #replay_buffer_signature
             )
 
-        #print('Table: {}'.format(self.replay_buffer.data_spec))
-
-
         self.reverb_server = reverb.Server([table])
 
         self.replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
@@ -218,18 +226,12 @@ class LunarLander(object):
             sequence_length=2,
             local_server=self.reverb_server)
 
-        #print('replay_buffer: {}'.format(self.replay_buffer.data_spec))
-
-
         self.rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
             self.replay_buffer.py_client,
             table_name,
             sequence_length=2)
 
 if __name__ == '__main__':
-    ll = LunarLander()
-    ll.model_prepare()
-    ll.reply_buffer_prepare()
+    ll = LunarLander(model_name='lunarl_1')
+    ll.prepare()
     ll.train_agent()
-
-
