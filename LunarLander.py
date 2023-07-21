@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Any
 import gym
 import numpy as np
 import mujoco_py as mj
 import tensorflow as tf
-from os.path import exists
+import os
+import signal
+from datetime import datetime
 
 """
 Reverb (dm-reverb) is an efficient and easy-to-use data storage and transport system designed for machine learning research.
@@ -22,6 +25,7 @@ from tf_agents.networks import sequential
 from tf_agents.utils import common
 from tf_agents.utils import composite
 from tf_agents.policies import random_tf_policy
+from tf_agents.policies import PolicySaver
 from tf_agents.specs import tensor_spec
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
@@ -30,6 +34,19 @@ from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.metrics import tf_metrics
 
 class LunarLander(object):
+    """Reinforsment learning for Lunar Lander environment"""
+
+    #Correctly finish train by CTRL+C
+    bFinishTrain = False
+
+    def handler(signum, frame):
+        """Signal processing handler"""
+        signame = signal.Signals(signum).name
+        print(f'Signal handler called with signal {signame} ({signum})')
+        LunarLander.bFinishTrain = True
+
+    def dt() -> str:
+        return str(datetime.now())
 
     def __init__(self, model_name=None) -> None:
         self.replay_buffer_max_length = 100000
@@ -39,7 +56,9 @@ class LunarLander(object):
         self.eval_interval = 1000
         self.batch_size = 64
 
-        self.model_name = model_name
+        self.model_name = os.path.join(".", model_name)
+        self.checkpoint_dir = self.model_name + '.checkpoint'
+        self.policy_dir = self.model_name + '.policy'
 
         self._env = gym.make('LunarLander-v2') #,
             # continuous: bool = False,
@@ -58,27 +77,44 @@ class LunarLander(object):
         print('Reward Spec: {}'.format(self._tf_env.time_step_spec().reward))
         print('Action Spec: {}'.format(self._tf_env.action_spec()))
 
-    def save_model(self, model_name=None, q_net=None):
+    def save_model(self, agent):
         """Save trained weights"""
-        if model_name and q_net:
-            q_net.save_weights(model_name)
+        print("Save checkpoint to: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
+        self.train_checkpointer.save(self.train_step_counter)
+        #self.policy_saver.save(self.policy_dir)
 
-    def load_model(self, model_name=None, q_net=None):
+    def load_model(self, agent) -> None:
         """Load previosly saved weights"""
-        if model_name and q_net and exists(model_name):
-            q_net.load_weights(model_name)
+        print("Loading checkpoint from: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
+        self.train_checkpointer = common.Checkpointer(
+            ckpt_dir=self.checkpoint_dir,
+            max_to_keep=1,
+            agent=agent,
+            policy=agent.policy,
+            replay_buffer=self.replay_buffer,
+            global_step=self.train_step_counter
+        )
+        self.train_checkpointer.initialize_or_restore()
+        print("Loaded checkpoint from: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
+
 
     def prepare(self):
         """"""
         self.model_prepare()
         self.reply_buffer_prepare()
+        self.load_model(self.agent)
+
 
     def train_agent(self):
         """Train network"""
-        self.agent.train_step_counter.assign(0)
-        avg = self.compute_avg_return(self._tf_env, self.policy, self.num_eval_episodes)
+        print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
+        self.agent.train_step_counter.assign(self.train_step_counter)
+        avg = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
         returns = [avg]
-        #print('Average return {}'.format(avg))
+
+        #Set CTRL+C handler
+        signal.signal(signal.SIGINT, LunarLander.handler)
+
 
         # Reset the environment.
         time_step = self._tf_env.reset()
@@ -95,7 +131,13 @@ class LunarLander(object):
 
         iterator = iter(self.dataset)
 
+        print("Start training at {}".format(LunarLander.dt()))
+
         for _ in range(self.num_iterations):
+
+            if LunarLander.bFinishTrain:
+                print("Finish flag detected")
+                break
 
             # Collect a few steps and save to the replay buffer.
             time_step, _ = driver.run(time_step)
@@ -117,8 +159,10 @@ class LunarLander(object):
                 print('step = {0}: Average Return = {1}'.format(step, avg_return))
                 returns.append(avg_return)
 
-        #save trained weights
-        self.save_model(self.model_name, self.q_net)
+        print("Finish training at {}".format(LunarLander.dt()))
+
+        #save state
+        self.save_model(self.agent)
 
     def compute_avg_return(self, environment, policy, num_episodes=10):
         """"""
@@ -154,7 +198,7 @@ class LunarLander(object):
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
         # with `num_actions` units to generate one q_value per available action as
         # its output.
-        layers = [self.gen_layer(num_units) for num_units in self.ly_params]
+        work_layers = [self.gen_layer(num_units) for num_units in self.ly_params]
 
         """
         Output layer - number od units equal number of actions (4 in our case)
@@ -165,9 +209,8 @@ class LunarLander(object):
             kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
-        self.q_net = sequential.Sequential(layers + [q_values_layer])
-
-        self.load_model(self.model_name, self.q_net)
+        layers = work_layers + [q_values_layer]
+        self.q_net = sequential.Sequential(layers)
 
         optimizer = tf.keras.optimizers.Adam() #use lerning rate by default 0.001
         self.train_step_counter = tf.Variable(0)
@@ -182,7 +225,10 @@ class LunarLander(object):
 
         self.agent.initialize()
 
-        self.gen_policy()
+        #polycy saver
+        #self.policy_saver =  PolicySaver(self.agent.collect_policy, batch_size=None)
+
+        self.generation_policy()
 
     def gen_layer(self, num_units : int) -> any:
         """
@@ -199,7 +245,7 @@ class LunarLander(object):
             )
 
 
-    def gen_policy(self):
+    def generation_policy(self):
         """Generate polices"""
         self.policy = random_tf_policy.RandomTFPolicy(self._tf_env.time_step_spec(), self._tf_env.action_spec())
 
