@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from typing import Any
+from xmlrpc.client import Boolean
 import gym
 import numpy as np
-import mujoco_py as mj
+#import mujoco_py as mj
 import tensorflow as tf
 import os
+import sys
 import signal
 from datetime import datetime
 
@@ -18,6 +20,7 @@ but the system also supports multiple data structure representations such as FIF
 import reverb
 
 from tf_agents.agents.dqn import dqn_agent
+from tf_agents.agents.reinforce import reinforce_agent
 from tf_agents.specs import tensor_spec
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
@@ -53,12 +56,14 @@ class LunarLander(object):
         self.num_eval_episodes = 10
         self.num_iterations = 20000
         self.log_interval = 20 #200
-        self.eval_interval = 1000
-        self.batch_size = 64
+        self.eval_interval = 100 #1000
+        self.batch_size = 128
 
-        self.model_name = os.path.join(".", model_name)
-        self.checkpoint_dir = self.model_name + '.checkpoint'
-        self.policy_dir = self.model_name + '.policy'
+        self.debug = True
+
+        self.model_name = os.path.join(".", model_name) if model_name else None
+        self.checkpoint_dir = self.model_name + '.checkpoint' if self.model_name else None
+        self.policy_dir = self.model_name + '.policy' if self.model_name else None
 
         self._env = gym.make('LunarLander-v2') #,
             # continuous: bool = False,
@@ -70,20 +75,33 @@ class LunarLander(object):
         self._py_env = suite_gym.wrap_env(self._env)
         self._tf_env = tf_py_environment.TFPyEnvironment(self._py_env)
         self.observations = self._tf_env.time_step_spec().observation.shape[0]
-        self.ly_params = [self.observations, self.batch_size, self.batch_size] #[8, 64, 64]
+        self.ly_params = [self.observations, self.batch_size, self.batch_size/2]
 
-        print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
-        print('Observation Spec: {}'.format(self._tf_env.time_step_spec().observation))
-        print('Reward Spec: {}'.format(self._tf_env.time_step_spec().reward))
-        print('Action Spec: {}'.format(self._tf_env.action_spec()))
+        if self.is_debug:
+            print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
+            print('Observation Num: {} Spec: {}'.format(self.observations, self._tf_env.time_step_spec().observation))
+            print('Reward Spec: {}'.format(self._tf_env.time_step_spec().reward))
+            print('Action Spec: {}'.format(self._tf_env.action_spec()))
+
+    @property
+    def mname(self) -> any:
+        return self.model_name
+
+    @property
+    def is_debug(self) -> bool:
+        return self.debug
 
     def save_model(self, agent):
         """Save trained weights"""
+        if not self.mname:
+            return
+
         print("Save checkpoint to: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
         self.train_checkpointer.save(self.train_step_counter)
-        #self.policy_saver.save(self.policy_dir)
 
     def load_model(self, agent) -> None:
+        if not self.mname:
+            return
         """Load previosly saved weights"""
         print("Loading checkpoint from: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
         self.train_checkpointer = common.Checkpointer(
@@ -105,11 +123,15 @@ class LunarLander(object):
         self.load_model(self.agent)
 
 
-    def train_agent(self):
+    def train_agent(self) -> any:
         """Train network"""
-        print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
+        if self.is_debug:
+            print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
         self.agent.train_step_counter.assign(self.train_step_counter)
         avg = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
+
+        if self.is_debug:
+            print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
         returns = [avg]
 
         #Set CTRL+C handler
@@ -133,7 +155,8 @@ class LunarLander(object):
 
         print("Start training at {}".format(LunarLander.dt()))
 
-        for _ in range(self.num_iterations):
+        step = self.agent.train_step_counter.numpy()
+        while step < self.num_iterations:
 
             if LunarLander.bFinishTrain:
                 print("Finish flag detected")
@@ -152,38 +175,65 @@ class LunarLander(object):
             step = self.agent.train_step_counter.numpy()
 
             if step % self.log_interval == 0:
-                print('step = {0}: loss = {1}'.format(step, train_loss))
+                print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
             if step % self.eval_interval == 0:
-                avg_return = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
-                print('step = {0}: Average Return = {1}'.format(step, avg_return))
-                returns.append(avg_return)
+                avg = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
+                print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
+                returns.append(avg)
 
         print("Finish training at {}".format(LunarLander.dt()))
 
         #save state
         self.save_model(self.agent)
+        return returns
 
     def compute_avg_return(self, environment, policy, num_episodes=10):
         """"""
         total_return = 0.0
         for eps in range(num_episodes):
-
             time_step = environment.reset()
             episode_return = 0.0
             steps = 0
+            episod_info = []
 
+            if self.is_debug:
+                step_res = [0] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], 0, 0]
+
+            episod_info.append(step_res)
             while not time_step.is_last():
                 action_step = policy.action(time_step)
                 time_step = environment.step(action_step.action)
                 episode_return += time_step.reward
                 steps += 1
 
-            print('Episode: {} return: {} steps {}'.format(eps, episode_return, steps))
+                if self.is_debug:
+                    step_res = [steps] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], action_step.action.numpy()[0], int(time_step.is_last())]
+                    episod_info.append(step_res)
+
+            if self.is_debug:
+                self.print_info(episod_info, eps)
+
             total_return += episode_return
+            print('Episode: {0} return: {1:0.2f} steps {2}'.format(eps, episode_return.numpy()[0], steps))
 
         avg_return = total_return / num_episodes
         return avg_return.numpy()[0]
+
+    def print_info(self, data:list, episode:int) -> bool:
+        """Print episode information to CSV format"""
+        if not self.is_debug:
+            return False
+
+        headers = ['Nm','O1','O2','O3','O4','O5','O6','O7','O8','StT','Rwd','Act','Last']
+        csv_file = '{0}_{1}.csv'.format(self.agent.train_step_counter.numpy(), episode)
+        with open(csv_file, "w") as fd_write:
+            fd_write.write(",".join(headers)+'\n')
+            for ln in data:
+                fd_write.write(",".join(["{:0.2f}".format(l) for l in ln])+'\n')
+            fd_write.close()
+
+        return True
 
     def model_prepare(self):
         """Generate model
@@ -216,12 +266,12 @@ class LunarLander(object):
         self.train_step_counter = tf.Variable(0)
 
         self.agent = dqn_agent.DqnAgent(
-            time_step_tensor_spec,
-            action_tensor_spec,
-            q_network=self.q_net,
-            optimizer=optimizer,
-            td_errors_loss_fn=common.element_wise_squared_loss,
-            train_step_counter=self.train_step_counter)
+                time_step_tensor_spec,
+                action_tensor_spec,
+                q_network=self.q_net,
+                optimizer=optimizer,
+                td_errors_loss_fn=common.element_wise_squared_loss,
+                train_step_counter=self.train_step_counter)
 
         self.agent.initialize()
 
@@ -241,7 +291,10 @@ class LunarLander(object):
         return tf.keras.layers.Dense(
             num_units,
             activation=tf.keras.activations.relu,
-            kernel_initializer=tf.keras.initializers.VarianceScaling(scale=2.0, mode='fan_in', distribution='truncated_normal')
+            kernel_initializer=tf.keras.initializers.VarianceScaling(
+                scale=1.0 if num_units <= 10 else 2.0,
+                mode='fan_in',
+                distribution='truncated_normal')
             )
 
 
@@ -278,6 +331,8 @@ class LunarLander(object):
             sequence_length=2)
 
 if __name__ == '__main__':
-    ll = LunarLander(model_name='lunarl_1')
+    mname = sys.argv[1] if len(sys.argv) > 1 else None
+    ll = LunarLander(model_name=mname)
     ll.prepare()
-    ll.train_agent()
+    res = ll.train_agent()
+    print(res)
