@@ -35,6 +35,7 @@ from tf_agents.replay_buffers import reverb_utils
 from tf_agents.trajectories import trajectory
 from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.metrics import tf_metrics
+from tf_agents.networks.layer_utils import print_summary
 
 class LunarLander(object):
     """Reinforsment learning for Lunar Lander environment"""
@@ -60,6 +61,7 @@ class LunarLander(object):
         self.batch_size = 128
 
         self.debug = True
+        self.debug_data = 'data/'
 
         self.model_name = os.path.join(".", model_name) if model_name else None
         self.checkpoint_dir = self.model_name + '.checkpoint' if self.model_name else None
@@ -75,7 +77,7 @@ class LunarLander(object):
         self._py_env = suite_gym.wrap_env(self._env)
         self._tf_env = tf_py_environment.TFPyEnvironment(self._py_env)
         self.observations = self._tf_env.time_step_spec().observation.shape[0]
-        self.ly_params = [self.observations, self.batch_size, self.batch_size/2]
+        self.ly_params = [self.observations*4, self.observations*2]
 
         if self.is_debug:
             print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
@@ -128,6 +130,10 @@ class LunarLander(object):
         if self.is_debug:
             print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
         self.agent.train_step_counter.assign(self.train_step_counter)
+
+        if self.is_debug:
+            print_summary(self.q_net)
+
         avg = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
 
         if self.is_debug:
@@ -184,6 +190,9 @@ class LunarLander(object):
 
         print("Finish training at {}".format(LunarLander.dt()))
 
+        if self.is_debug:
+            print_summary(self.q_net)
+
         #save state
         self.save_model(self.agent)
         return returns
@@ -226,7 +235,7 @@ class LunarLander(object):
             return False
 
         headers = ['Nm','O1','O2','O3','O4','O5','O6','O7','O8','StT','Rwd','Act','Last']
-        csv_file = '{0}_{1}.csv'.format(self.agent.train_step_counter.numpy(), episode)
+        csv_file = '{0}{1}_{2}.csv'.format(self.debug_data, self.agent.train_step_counter.numpy(), episode)
         with open(csv_file, "w") as fd_write:
             fd_write.write(",".join(headers)+'\n')
             for ln in data:
@@ -248,6 +257,7 @@ class LunarLander(object):
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
         # with `num_actions` units to generate one q_value per available action as
         # its output.
+        input_lr = tf.keras.layers.Dense(self.observations, activation=None)
         work_layers = [self.gen_layer(num_units) for num_units in self.ly_params]
 
         """
@@ -259,8 +269,11 @@ class LunarLander(object):
             kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
-        layers = work_layers + [q_values_layer]
+        layers = [input_lr] + work_layers + [q_values_layer]
         self.q_net = sequential.Sequential(layers)
+
+        #rint("Q Net Input Spec: {}".format(self.q_net.input_tensor_spec))
+        #print("Q Net State Spec: {}".format(self.q_net.state_spec))
 
         optimizer = tf.keras.optimizers.Adam() #use lerning rate by default 0.001
         self.train_step_counter = tf.Variable(0)
