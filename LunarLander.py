@@ -199,6 +199,9 @@ class LunarLander(object):
 
     def compute_avg_return(self, environment, policy, num_episodes=10):
         """"""
+
+        print("Start compute average at {}".format(LunarLander.dt()))
+
         total_return = 0.0
         for eps in range(num_episodes):
             time_step = environment.reset()
@@ -225,6 +228,8 @@ class LunarLander(object):
 
             total_return += episode_return
             print('Episode: {0} return: {1:0.2f} steps {2}'.format(eps, episode_return.numpy()[0], steps))
+
+        print("Finished compute average at {}".format(LunarLander.dt()))
 
         avg_return = total_return / num_episodes
         return avg_return.numpy()[0]
