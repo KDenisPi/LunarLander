@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Any
+from typing import Any, Optional
 from xmlrpc.client import Boolean
 import gym
 import numpy as np
@@ -52,12 +52,16 @@ class LunarLander(object):
     def dt() -> str:
         return str(datetime.now())
 
-    def __init__(self, model_name=None) -> None:
-        self.replay_buffer_max_length = 100000
+    def __init__(self, model_name: Optional [str] = None,
+                 num_iterations: Optional[int] = 20000,
+                 replay_buffer_max_length: Optional[int] = 100000,
+                 eval_interval: Optional [int] = 100) -> None:
+        """Initialization"""
+        self.replay_buffer_max_length = replay_buffer_max_length
         self.num_eval_episodes = 10
-        self.num_iterations = 20000
+        self.num_iterations = num_iterations
         self.log_interval = 20 #200
-        self.eval_interval = 100 #1000
+        self.eval_interval = eval_interval #1000
         self.batch_size = 128
 
         self.debug = True
@@ -73,11 +77,17 @@ class LunarLander(object):
             # enable_wind: bool = False,
             # wind_power: float = 15.0,
             # turbulence_power: float = 1.5)
+        self._env_eval = gym.make('LunarLander-v2')
 
         self._py_env = suite_gym.wrap_env(self._env)
         self._tf_env = tf_py_environment.TFPyEnvironment(self._py_env)
+
+        self._py_env_eval = suite_gym.wrap_env(self._env_eval)
+        self._tf_env_eval = tf_py_environment.TFPyEnvironment(self._py_env_eval)
+
+
         self.observations = self._tf_env.time_step_spec().observation.shape[0]
-        self.ly_params = [self.observations*4, self.observations*2]
+        self.ly_params = [[self.observations*4, 0.2], [self.observations*2, 0.0]]
 
         if self.is_debug:
             print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
@@ -99,7 +109,7 @@ class LunarLander(object):
             return
 
         print("Save checkpoint to: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
-        self.train_checkpointer.save(self.train_step_counter)
+        self.train_checkpointer.save(global_step=self.train_step_counter)
 
     def load_model(self, agent) -> None:
         if not self.mname:
@@ -134,7 +144,7 @@ class LunarLander(object):
         if self.is_debug:
             print_summary(self.q_net)
 
-        avg = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
+        avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.num_eval_episodes)
 
         if self.is_debug:
             print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
@@ -184,7 +194,7 @@ class LunarLander(object):
                 print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
             if step % self.eval_interval == 0:
-                avg = self.compute_avg_return(self._tf_env, self.agent.policy, self.num_eval_episodes)
+                avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.num_eval_episodes)
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
@@ -263,7 +273,7 @@ class LunarLander(object):
         # with `num_actions` units to generate one q_value per available action as
         # its output.
         input_lr = tf.keras.layers.Dense(self.observations, activation=None)
-        work_layers = [self.gen_layer(num_units) for num_units in self.ly_params]
+        work_layers = [self.gen_layer(lyer_prm[0], lyer_prm[1]) for lyer_prm in self.ly_params]
 
         """
         Output layer - number od units equal number of actions (4 in our case)
@@ -298,7 +308,7 @@ class LunarLander(object):
 
         self.generation_policy()
 
-    def gen_layer(self, num_units : int) -> any:
+    def gen_layer(self, num_units : int, negative_slope: float = 0.0) -> any:
         """
         VarianceScaling
         With distribution="truncated_normal" or "untruncated_normal",
@@ -308,7 +318,7 @@ class LunarLander(object):
         """
         return tf.keras.layers.Dense(
             num_units,
-            activation=tf.keras.activations.relu,
+            activation=tf.keras.activations.relu(negative_slope=negative_slope),
             kernel_initializer=tf.keras.initializers.VarianceScaling(
                 scale=1.0 if num_units <= 10 else 2.0,
                 mode='fan_in',
@@ -350,7 +360,7 @@ class LunarLander(object):
 
 if __name__ == '__main__':
     mname = sys.argv[1] if len(sys.argv) > 1 else None
-    ll = LunarLander(model_name=mname)
+    ll = LunarLander(model_name=mname, num_iterations=200)
     ll.prepare()
     res = ll.train_agent()
     print(res)
