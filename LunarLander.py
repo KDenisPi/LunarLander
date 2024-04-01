@@ -87,7 +87,7 @@ class LunarLander(object):
 
 
         self.observations = self._tf_env.time_step_spec().observation.shape[0]
-        self.ly_params = [[self.observations*4, 0.2], [self.observations*2, 0.0]]
+        self.ly_params = [[self.observations*4, 'gelu'], [self.observations*2, 'relu']]
 
         if self.is_debug:
             print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
@@ -308,7 +308,7 @@ class LunarLander(object):
 
         self.generation_policy()
 
-    def gen_layer(self, num_units : int, negative_slope: float = 0.0) -> any:
+    def gen_layer(self, num_units : int, activation: str = 'relu') -> any:
         """
         VarianceScaling
         With distribution="truncated_normal" or "untruncated_normal",
@@ -318,7 +318,7 @@ class LunarLander(object):
         """
         return tf.keras.layers.Dense(
             num_units,
-            activation=tf.keras.activations.relu(negative_slope=negative_slope),
+            activation=tf.keras.activations.gelu if activation == 'gelu' else tf.keras.activations.relu,
             kernel_initializer=tf.keras.initializers.VarianceScaling(
                 scale=1.0 if num_units <= 10 else 2.0,
                 mode='fan_in',
