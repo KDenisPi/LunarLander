@@ -5,12 +5,12 @@ from typing import Any, Optional
 from xmlrpc.client import Boolean
 import gym
 import numpy as np
-#import mujoco_py as mj
 import tensorflow as tf
 import os
 import sys
 import signal
 from datetime import datetime
+import json
 
 """
 Reverb (dm-reverb) is an efficient and easy-to-use data storage and transport system designed for machine learning research.
@@ -37,6 +37,149 @@ from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks.layer_utils import print_summary
 
+"""
+{
+    "replay_buffer_max_length": 100000,
+    "num_eval_episodes": 10,
+    "num_iterations": 20000,
+    "eval_interval": 100,
+    "log_interval": 20,
+    "batch_size": 128,
+    "layers": [
+        {
+            "num_units_scale": 4,
+            "activation": "gelu"
+        },
+        {
+            "num_units_scale": 2,
+            "activation": "relu"
+        }
+    ]
+}
+"""
+
+class ModelParams(object):
+    """Parameters for model"""
+
+    s_replay_buffer_max_length = 100000
+    s_num_eval_episodes = 10
+    s_num_iterations = 20000
+    s_log_interval = 20 #200
+    s_eval_interval = 100 #1000
+    s_batch_size = 128
+    s_debug = True
+    s_debug_data = 'data/'
+
+    s_layers = "layers"
+
+    def __init__(self) -> None:
+
+        self.mparams = {
+            "replay_buffer_max_length" : ModelParams.s_replay_buffer_max_length,
+            "num_eval_episodes" : ModelParams.s_num_eval_episodes,
+            "num_iterations" : ModelParams.s_num_iterations,
+            "log_interval" : ModelParams.s_log_interval, #200
+            "eval_interval" : ModelParams.s_eval_interval, #1000
+            "batch_size" : ModelParams.s_batch_size,
+
+            "debug" : ModelParams.s_debug,
+            "debug_data" : ModelParams.s_debug_data
+        }
+
+        self.layers_cfg = [
+            {
+                "num_units_scale": 4,
+                "activation": "gelu"
+            },
+            {
+                "num_units_scale": 2,
+                "activation": "relu"
+            }
+        ]
+
+    @property
+    def replay_buffer_max_length(self) -> int:
+        return self.mparams['replay_buffer_max_length']
+
+    @property
+    def num_eval_episodes(self) -> int:
+        return self.mparams['num_eval_episodes']
+
+    @property
+    def num_iterations(self) -> int:
+        return self.mparams['num_iterations']
+
+    @property
+    def log_interval(self) -> int:
+        return self.mparams['log_interval']
+
+    @property
+    def eval_interval(self) -> int:
+        return self.mparams['eval_interval']
+
+    @property
+    def batch_size(self) -> int:
+        return self.mparams['batch_size']
+
+    @property
+    def is_debug(self) -> Boolean:
+        return self.mparams['debug']
+
+    @property
+    def debug_data(self) -> str:
+        return self.mparams['debug_data']
+
+    @property
+    def layers(self) -> list:
+        return self.layers_cfg
+
+    def load_ml_params(self, f_name:str = None) -> bool:
+        """Load models parameters"""
+        if not f_name:
+            return True
+
+        result = True
+        self.f_name = f_name
+        try:
+            fd = open(self.f_name, 'r')
+            try:
+                ml_parameters = json.load(fd)
+                print("Loaded {}".format(f_name))
+
+                """Genaral model parameters"""
+                for pkey in self.mparams.keys():
+                    if pkey in ml_parameters:
+                        self.mparams[pkey] = ml_parameters[pkey]
+
+                """Layers configuration"""
+
+                if ModelParams.s_layers not in ml_parameters or len(ml_parameters[ModelParams.s_layers])==0:
+                    print("Invalid layers configuration")
+                    return False
+
+                self.layers_cfg = ml_parameters[ModelParams.s_layers]
+                for layer in self.layers_cfg:
+                    if "activation" not in layer or layer["activation"] not in ["relu", "gelu"]:
+                        layer["activation"] = "relu"
+                    if "num_units_scale" not in layer or layer["num_units_scale"] <=0 or layer["num_units_scale"] > 20:
+                        print("Error. Invalid layer configuration. Value for num_units_scale is missing or incorrect.")
+                        return False
+
+            except json.JSONDecodeError as jerr:
+                msg = "Error. Could not parse file {} err {} line {}".format(self.f_name, jerr.msg, jerr.lineno)
+                print(msg)
+                result = False
+
+            fd.close()
+
+        except OSError as err:
+            msg = "Error. Could not open file {} errno {} {}".format(self.f_name, err.errno, err.strerror)
+            print(msg)
+            result = False
+
+        return result
+
+
 class LunarLander(object):
     """Reinforsment learning for Lunar Lander environment"""
 
@@ -52,20 +195,12 @@ class LunarLander(object):
     def dt() -> str:
         return str(datetime.now())
 
-    def __init__(self, model_name: Optional [str] = None,
-                 num_iterations: Optional[int] = 20000,
-                 replay_buffer_max_length: Optional[int] = 100000,
-                 eval_interval: Optional [int] = 100) -> None:
-        """Initialization"""
-        self.replay_buffer_max_length = replay_buffer_max_length
-        self.num_eval_episodes = 10
-        self.num_iterations = num_iterations
-        self.log_interval = 20 #200
-        self.eval_interval = eval_interval #1000
-        self.batch_size = 128
+    def __init__(self, cfg_name: Optional [str] = None, model_name: Optional [str] = None) -> None:
 
-        self.debug = True
-        self.debug_data = 'data/'
+        """Initialization"""
+        self.cfg = ModelParams()
+        if cfg_name:
+            res = self.cfg.load_ml_params(cfg_name)
 
         self.model_name = os.path.join(".", model_name) if model_name else None
         self.checkpoint_dir = self.model_name + '.checkpoint' if self.model_name else None
@@ -87,7 +222,6 @@ class LunarLander(object):
 
 
         self.observations = self._tf_env.time_step_spec().observation.shape[0]
-        self.ly_params = [[self.observations*4, 'gelu'], [self.observations*2, 'relu']]
 
         if self.is_debug:
             print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
@@ -101,7 +235,7 @@ class LunarLander(object):
 
     @property
     def is_debug(self) -> bool:
-        return self.debug
+        return self.cfg.is_debug
 
     def save_model(self, agent):
         """Save trained weights"""
@@ -144,7 +278,7 @@ class LunarLander(object):
         if self.is_debug:
             print_summary(self.q_net)
 
-        avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.num_eval_episodes)
+        avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
 
         if self.is_debug:
             print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
@@ -164,7 +298,7 @@ class LunarLander(object):
 
         self.dataset = self.replay_buffer.as_dataset(
             num_parallel_calls=3,
-            sample_batch_size=self.batch_size,
+            sample_batch_size=self.cfg.batch_size,
             num_steps=2).prefetch(3)   #num_steps=2
 
         iterator = iter(self.dataset)
@@ -172,7 +306,7 @@ class LunarLander(object):
         print("Start training at {}".format(LunarLander.dt()))
 
         step = self.agent.train_step_counter.numpy()
-        while step < self.num_iterations:
+        while step < self.cfg.num_iterations:
 
             if LunarLander.bFinishTrain:
                 print("Finish flag detected")
@@ -190,11 +324,11 @@ class LunarLander(object):
             train_loss = self.agent.train(batched_exp).loss
             step = self.agent.train_step_counter.numpy()
 
-            if step % self.log_interval == 0:
+            if step % self.cfg.log_interval == 0:
                 print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
-            if step % self.eval_interval == 0:
-                avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.num_eval_episodes)
+            if step % self.cfg.eval_interval == 0:
+                avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
@@ -250,7 +384,7 @@ class LunarLander(object):
             return False
 
         headers = ['Nm','O1','O2','O3','O4','O5','O6','O7','O8','StT','Rwd','Act','Last']
-        csv_file = '{0}{1}_{2}.csv'.format(self.debug_data, self.agent.train_step_counter.numpy(), episode)
+        csv_file = '{0}{1}_{2}.csv'.format(self.cfg.debug_data, self.agent.train_step_counter.numpy(), episode)
         with open(csv_file, "w") as fd_write:
             fd_write.write(",".join(headers)+'\n')
             for ln in data:
@@ -272,8 +406,8 @@ class LunarLander(object):
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
         # with `num_actions` units to generate one q_value per available action as
         # its output.
-        input_lr = tf.keras.layers.Dense(self.observations, activation=None)
-        work_layers = [self.gen_layer(lyer_prm[0], lyer_prm[1]) for lyer_prm in self.ly_params]
+        input_lr = tf.keras.layers.Dense(self.observations, activation=None, name="Input")
+        work_layers = [self.gen_layer(lyer_prm["num_units_scale"]*self.observations, lyer_prm["activation"]) for lyer_prm in self.cfg.layers]
 
         """
         Output layer - number od units equal number of actions (4 in our case)
@@ -281,6 +415,7 @@ class LunarLander(object):
         q_values_layer = tf.keras.layers.Dense(
             self.num_actions,
             activation=None,
+            name="Output",
             kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
@@ -316,9 +451,12 @@ class LunarLander(object):
         a standard deviation (after truncation, if used) stddev = sqrt(scale / n), where n is:
         number of input units in the weight tensor, if mode="fan_in"
         """
+        l_name = "{}_{}".format(activation, num_units)
+
         return tf.keras.layers.Dense(
             num_units,
             activation=tf.keras.activations.gelu if activation == 'gelu' else tf.keras.activations.relu,
+            name=l_name,
             kernel_initializer=tf.keras.initializers.VarianceScaling(
                 scale=1.0 if num_units <= 10 else 2.0,
                 mode='fan_in',
@@ -338,7 +476,7 @@ class LunarLander(object):
         table_name = 'uniform_table'
         table = reverb.Table(
             table_name,
-            max_size=self.replay_buffer_max_length,
+            max_size=self.cfg.replay_buffer_max_length,
             sampler=reverb.selectors.Uniform(),
             remover=reverb.selectors.Fifo(),
             rate_limiter=reverb.rate_limiters.MinSize(1),
@@ -359,8 +497,17 @@ class LunarLander(object):
             sequence_length=2)
 
 if __name__ == '__main__':
-    mname = sys.argv[1] if len(sys.argv) > 1 else None
-    ll = LunarLander(model_name=mname, num_iterations=200)
+    mname = None
+    cfgname = None
+
+    if len(sys.argv) == 3:
+        cfgname = sys.argv[1]
+        mname = sys.argv[2]
+    if len(sys.argv) == 2:
+        cfgname = sys.argv[1]
+
+
+    ll = LunarLander(cfg_name=cfgname, model_name=mname)
     ll.prepare()
     res = ll.train_agent()
     print(res)
