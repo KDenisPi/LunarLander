@@ -64,8 +64,8 @@ class ModelParams(object):
     s_replay_buffer_max_length = 100000
     s_num_eval_episodes = 10
     s_num_iterations = 20000
-    s_log_interval = 20 #200
-    s_eval_interval = 100 #1000
+    s_log_interval = 200
+    s_eval_interval = 1000
     s_batch_size = 128
     s_debug = True
     s_debug_data = 'data/'
@@ -343,7 +343,6 @@ class LunarLander(object):
 
     def compute_avg_return(self, environment, policy, num_episodes=10):
         """"""
-
         print("Start compute average at {}".format(LunarLander.dt()))
 
         total_return = 0.0
@@ -355,8 +354,8 @@ class LunarLander(object):
 
             if self.is_debug:
                 step_res = [0] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], 0, 0]
+                episod_info.append(step_res)
 
-            episod_info.append(step_res)
             while not time_step.is_last():
                 action_step = policy.action(time_step)
                 time_step = environment.step(action_step.action)
@@ -383,7 +382,7 @@ class LunarLander(object):
         if not self.is_debug:
             return False
 
-        headers = ['Nm','O1','O2','O3','O4','O5','O6','O7','O8','StT','Rwd','Act','Last']
+        headers = ['Nm','X','Y','Vx','Vy','Angle','Va','LegL','LegR','StT','Reward','Action','Last']
         csv_file = '{0}{1}_{2}.csv'.format(self.cfg.debug_data, self.agent.train_step_counter.numpy(), episode)
         with open(csv_file, "w") as fd_write:
             fd_write.write(",".join(headers)+'\n')
