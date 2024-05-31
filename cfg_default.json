@@ -8,10 +8,10 @@
     "layers": [
         {
             "num_units_scale": 4,
-            "activation": "gelu"
+            "activation": "relu"
         },
         {
-            "num_units_scale": 2,
+            "num_units_scale": 4,
             "activation": "relu"
         }
     ]
