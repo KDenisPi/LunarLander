@@ -63,9 +63,9 @@ from tf_agents.networks.layer_utils import print_summary
 class ModelParams(object):
     """Parameters for model"""
 
-    s_replay_buffer_max_length = 50 #2000 #100000
+    s_replay_buffer_max_length = 100000
     s_num_eval_episodes = 10
-    s_num_iterations = 1000 #20000
+    s_num_iterations = 20000
     s_log_interval = 200
     s_eval_interval = 1000
     s_batch_size = 128
@@ -215,9 +215,7 @@ class LunarLander(object):
         self.tf_env = tf_py_environment.TFPyEnvironment(self.py_env)
         self.tf_env_eval = tf_py_environment.TFPyEnvironment(self.py_env_eval)
 
-
         self.observations = self.tf_env.time_step_spec().observation.shape[0]
-        #self.observations = self.py_env.time_step_spec().observation.shape[0]
 
         if self.is_debug:
             print('Time Step Spec: {}'.format(self.tf_env.time_step_spec()))
@@ -283,7 +281,6 @@ class LunarLander(object):
         #Set CTRL+C handler
         signal.signal(signal.SIGINT, LunarLander.handler)
 
-
         # Reset the environment.
         num_episodes = tf_metrics.NumberOfEpisodes()
         env_steps = tf_metrics.EnvironmentSteps()
@@ -297,9 +294,6 @@ class LunarLander(object):
                                     [self.rb_observer],
                                     max_steps=100)
 
-        #time_step = self.tf_env.reset()
-        #print("Times step {}".format(time_step))
-
         time_step = self.py_env.reset()
         print("Times step {}".format(time_step))
 
@@ -309,8 +303,6 @@ class LunarLander(object):
             num_steps=2).prefetch(3)   #num_steps=2
 
         iterator = iter(dataset)
-
-        #print("Reply buffer frames {}".format(self.replay_buffer.num_frames()))
 
         print("Start training at {}".format(LunarLander.dt()))
 
@@ -323,19 +315,7 @@ class LunarLander(object):
 
             # Collect a few steps and save to the replay buffer.
             time_step, _ = driver.run(time_step)
-
-            #dataset = self.replay_buffer.as_dataset(sample_batch_size=2, num_steps=2)
-            #iterator = iter(dataset)
-
-            print("Reply buffer frames {}".format(self.replay_buffer.num_frames()))
             experience, _ = next(iterator)
-
-            """
-            batched_exp = tf.nest.map_structure(
-                lambda t: composite.squeeze(t, axis=2),
-                experience
-            )
-            """
 
             train_loss = self.agent.train(experience).loss
             step = self.agent.train_step_counter.numpy()
@@ -345,7 +325,6 @@ class LunarLander(object):
 
             if step % self.cfg.eval_interval == 0:
                 avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
-                #avg = self.compute_avg_return(self.py_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
@@ -414,7 +393,6 @@ class LunarLander(object):
         Load previosly detected weights if needed
         """
         action_tensor_spec = self.tf_env.action_spec()
-        #action_tensor_spec = self.py_env.action_spec()
         self.num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
         print('Number actions: {}'.format(self.num_actions))
 
@@ -455,8 +433,6 @@ class LunarLander(object):
 
         """Generate polices"""
         self.policy = random_tf_policy.RandomTFPolicy(time_step_spec=self.tf_env.time_step_spec(), action_spec=self.tf_env.action_spec())
-        #self.policy = random_py_policy.RandomPyPolicy(time_step_spec=self.py_env.time_step_spec(), action_spec=self.py_env.action_spec())
-
 
     def gen_layer(self, num_units : int, activation: str = 'relu') -> any:
         """
@@ -501,8 +477,6 @@ class LunarLander(object):
             sequence_length=2,
             local_server=self.reverb_server)
 
-        print("Reply buffer frames {}".format(self.replay_buffer.num_frames()))
-
         self.rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
             self.replay_buffer.py_client,
             table_name,
@@ -517,7 +491,6 @@ if __name__ == '__main__':
         mname = sys.argv[2]
     if len(sys.argv) == 2:
         cfgname = sys.argv[1]
-
 
     ll = LunarLander(cfg_name=cfgname, model_name=mname)
     ll.prepare()
