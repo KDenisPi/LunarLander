@@ -28,12 +28,14 @@ from tf_agents.networks import sequential
 from tf_agents.utils import common
 from tf_agents.utils import composite
 from tf_agents.policies import random_tf_policy
-from tf_agents.policies import PolicySaver
+from tf_agents.policies import random_py_policy
+from tf_agents.policies import py_tf_eager_policy
 from tf_agents.specs import tensor_spec
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.trajectories import trajectory
 from tf_agents.drivers import dynamic_episode_driver
+from tf_agents.drivers import py_driver
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks.layer_utils import print_summary
 
@@ -61,9 +63,9 @@ from tf_agents.networks.layer_utils import print_summary
 class ModelParams(object):
     """Parameters for model"""
 
-    s_replay_buffer_max_length = 100000
+    s_replay_buffer_max_length = 50 #2000 #100000
     s_num_eval_episodes = 10
-    s_num_iterations = 20000
+    s_num_iterations = 1000 #20000
     s_log_interval = 200
     s_eval_interval = 1000
     s_batch_size = 128
@@ -201,33 +203,27 @@ class LunarLander(object):
         self.cfg = ModelParams()
         if cfg_name:
             res = self.cfg.load_ml_params(cfg_name)
+            print('Load model parameters: {}'.format(res))
 
         self.model_name = os.path.join(".", model_name) if model_name else None
         self.checkpoint_dir = self.model_name + '.checkpoint' if self.model_name else None
         self.policy_dir = self.model_name + '.policy' if self.model_name else None
 
-        self._env = gym.make('LunarLander-v2') #,
-            # continuous: bool = False,
-            # gravity: float = -10.0,
-            # enable_wind: bool = False,
-            # wind_power: float = 15.0,
-            # turbulence_power: float = 1.5)
-        self._env_eval = gym.make('LunarLander-v2')
+        self.py_env = suite_gym.load('LunarLander-v2')
+        self.py_env_eval = suite_gym.load('LunarLander-v2')
 
-        self._py_env = suite_gym.wrap_env(self._env)
-        self._tf_env = tf_py_environment.TFPyEnvironment(self._py_env)
-
-        self._py_env_eval = suite_gym.wrap_env(self._env_eval)
-        self._tf_env_eval = tf_py_environment.TFPyEnvironment(self._py_env_eval)
+        self.tf_env = tf_py_environment.TFPyEnvironment(self.py_env)
+        self.tf_env_eval = tf_py_environment.TFPyEnvironment(self.py_env_eval)
 
 
-        self.observations = self._tf_env.time_step_spec().observation.shape[0]
+        self.observations = self.tf_env.time_step_spec().observation.shape[0]
+        #self.observations = self.py_env.time_step_spec().observation.shape[0]
 
         if self.is_debug:
-            print('Time Step Spec: {}'.format(self._tf_env.time_step_spec()))
-            print('Observation Num: {} Spec: {}'.format(self.observations, self._tf_env.time_step_spec().observation))
-            print('Reward Spec: {}'.format(self._tf_env.time_step_spec().reward))
-            print('Action Spec: {}'.format(self._tf_env.action_spec()))
+            print('Time Step Spec: {}'.format(self.tf_env.time_step_spec()))
+            print('Observation Num: {} Spec: {}'.format(self.observations, self.tf_env.time_step_spec().observation))
+            print('Reward Spec: {}'.format(self.tf_env.time_step_spec().reward))
+            print('Action Spec: {}'.format(self.tf_env.action_spec()))
 
     @property
     def mname(self) -> any:
@@ -278,7 +274,7 @@ class LunarLander(object):
         if self.is_debug:
             print_summary(self.q_net)
 
-        avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+        avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
 
         if self.is_debug:
             print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
@@ -289,19 +285,32 @@ class LunarLander(object):
 
 
         # Reset the environment.
-        time_step = self._tf_env.reset()
         num_episodes = tf_metrics.NumberOfEpisodes()
         env_steps = tf_metrics.EnvironmentSteps()
-        observers = [num_episodes, env_steps, self.rb_observer]
+        #observers = [num_episodes, env_steps, self.rb_observer]
+        #observers = [self.rb_observer]
 
-        driver = dynamic_episode_driver.DynamicEpisodeDriver(self._tf_env, self.policy, observers, num_episodes=2)
+        driver = py_driver.PyDriver(self.py_env,
+                                    py_tf_eager_policy.PyTFEagerPolicy(
+                                        self.agent.collect_policy,
+                                        use_tf_function=True),
+                                    [self.rb_observer],
+                                    max_steps=100)
 
-        self.dataset = self.replay_buffer.as_dataset(
+        #time_step = self.tf_env.reset()
+        #print("Times step {}".format(time_step))
+
+        time_step = self.py_env.reset()
+        print("Times step {}".format(time_step))
+
+        dataset = self.replay_buffer.as_dataset(
             num_parallel_calls=3,
             sample_batch_size=self.cfg.batch_size,
             num_steps=2).prefetch(3)   #num_steps=2
 
-        iterator = iter(self.dataset)
+        iterator = iter(dataset)
+
+        #print("Reply buffer frames {}".format(self.replay_buffer.num_frames()))
 
         print("Start training at {}".format(LunarLander.dt()))
 
@@ -314,21 +323,29 @@ class LunarLander(object):
 
             # Collect a few steps and save to the replay buffer.
             time_step, _ = driver.run(time_step)
+
+            #dataset = self.replay_buffer.as_dataset(sample_batch_size=2, num_steps=2)
+            #iterator = iter(dataset)
+
+            print("Reply buffer frames {}".format(self.replay_buffer.num_frames()))
             experience, _ = next(iterator)
 
+            """
             batched_exp = tf.nest.map_structure(
                 lambda t: composite.squeeze(t, axis=2),
                 experience
             )
+            """
 
-            train_loss = self.agent.train(batched_exp).loss
+            train_loss = self.agent.train(experience).loss
             step = self.agent.train_step_counter.numpy()
 
             if step % self.cfg.log_interval == 0:
                 print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
             if step % self.cfg.eval_interval == 0:
-                avg = self.compute_avg_return(self._tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+                avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+                #avg = self.compute_avg_return(self.py_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
@@ -396,9 +413,8 @@ class LunarLander(object):
         """Generate model
         Load previosly detected weights if needed
         """
-        action_tensor_spec = self._tf_env.action_spec()
-        time_step_tensor_spec = self._tf_env.time_step_spec()
-
+        action_tensor_spec = self.tf_env.action_spec()
+        #action_tensor_spec = self.py_env.action_spec()
         self.num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
         print('Number actions: {}'.format(self.num_actions))
 
@@ -428,8 +444,8 @@ class LunarLander(object):
         self.train_step_counter = tf.Variable(0)
 
         self.agent = dqn_agent.DqnAgent(
-                time_step_tensor_spec,
-                action_tensor_spec,
+                self.tf_env.time_step_spec(),
+                self.tf_env.action_spec(),
                 q_network=self.q_net,
                 optimizer=optimizer,
                 td_errors_loss_fn=common.element_wise_squared_loss,
@@ -437,10 +453,10 @@ class LunarLander(object):
 
         self.agent.initialize()
 
-        #polycy saver
-        #self.policy_saver =  PolicySaver(self.agent.collect_policy, batch_size=None)
+        """Generate polices"""
+        self.policy = random_tf_policy.RandomTFPolicy(time_step_spec=self.tf_env.time_step_spec(), action_spec=self.tf_env.action_spec())
+        #self.policy = random_py_policy.RandomPyPolicy(time_step_spec=self.py_env.time_step_spec(), action_spec=self.py_env.action_spec())
 
-        self.generation_policy()
 
     def gen_layer(self, num_units : int, activation: str = 'relu') -> any:
         """
@@ -462,11 +478,6 @@ class LunarLander(object):
                 distribution='truncated_normal')
             )
 
-
-    def generation_policy(self):
-        """Generate polices"""
-        self.policy = random_tf_policy.RandomTFPolicy(self._tf_env.time_step_spec(), self._tf_env.action_spec())
-
     def reply_buffer_prepare(self):
         """Prepre replay buffer"""
         replay_buffer_signature = tensor_spec.from_spec(self.agent.collect_data_spec)
@@ -479,16 +490,18 @@ class LunarLander(object):
             sampler=reverb.selectors.Uniform(),
             remover=reverb.selectors.Fifo(),
             rate_limiter=reverb.rate_limiters.MinSize(1),
-            signature=None #replay_buffer_signature
+            signature=replay_buffer_signature
             )
 
         self.reverb_server = reverb.Server([table])
 
         self.replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
-            data_spec=replay_buffer_signature,
+            data_spec=self.agent.collect_data_spec,
             table_name=table_name,
             sequence_length=2,
             local_server=self.reverb_server)
+
+        print("Reply buffer frames {}".format(self.replay_buffer.num_frames()))
 
         self.rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
             self.replay_buffer.py_client,
