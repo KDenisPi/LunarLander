@@ -272,11 +272,11 @@ class LunarLander(object):
         if self.is_debug:
             print_summary(self.q_net)
 
-        avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+        #avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
 
-        if self.is_debug:
-            print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
-        returns = [avg]
+        #if self.is_debug:
+        #    print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
+        returns = [] #[avg]
 
         #Set CTRL+C handler
         signal.signal(signal.SIGINT, LunarLander.handler)
@@ -284,42 +284,42 @@ class LunarLander(object):
         # Reset the environment.
         num_episodes = tf_metrics.NumberOfEpisodes()
         env_steps = tf_metrics.EnvironmentSteps()
-        #observers = [num_episodes, env_steps, self.rb_observer]
-        #observers = [self.rb_observer]
 
         driver = py_driver.PyDriver(self.py_env,
-                                    py_tf_eager_policy.PyTFEagerPolicy(
-                                        self.agent.collect_policy,
-                                        use_tf_function=True),
+                                    py_tf_eager_policy.PyTFEagerPolicy(self.agent.collect_policy, use_tf_function=True),
                                     [self.rb_observer],
-                                    max_steps=100)
+                                    max_steps=self.cfg.batch_size)
 
-        time_step = self.py_env.reset()
-        print("Times step {}".format(time_step))
+        #time_step = self.py_env.reset()
+        #print("Times step {}".format(time_step))
 
-        dataset = self.replay_buffer.as_dataset(
-            num_parallel_calls=3,
-            sample_batch_size=self.cfg.batch_size,
-            num_steps=2).prefetch(3)   #num_steps=2
-
-        iterator = iter(dataset)
+        #print("self.cfg.eval_interval {}".format(self.cfg.eval_interval))
 
         print("Start training at {}".format(LunarLander.dt()))
 
         step = self.agent.train_step_counter.numpy()
-        while step < self.cfg.num_iterations:
+        while step < self.cfg.num_iterations:  #really there is num of steps
 
             if LunarLander.bFinishTrain:
                 print("Finish flag detected")
                 break
 
             # Collect a few steps and save to the replay buffer.
-            time_step, _ = driver.run(time_step)
-            experience, _ = next(iterator)
+            self.collect_steps(driver, self.py_env)
 
-            train_loss = self.agent.train(experience).loss
+            dataset = self.replay_buffer.as_dataset(
+                #num_parallel_calls=3,
+                sample_batch_size=self.cfg.batch_size,
+                num_steps=2).prefetch(3)
+
+            iterator = iter(dataset)
+
+            experiences, _ = next(iterator)
+            train_loss = self.agent.train(experiences).loss
+
+            self.replay_buffer.clear()
+
             step = self.agent.train_step_counter.numpy()
-
             if step % self.cfg.log_interval == 0:
                 print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
@@ -336,6 +336,11 @@ class LunarLander(object):
         #save state
         self.save_model(self.agent)
         return returns
+
+    def collect_steps(self, driver, environment):
+        time_step = environment.reset()
+        driver.run(time_step)
+
 
     def compute_avg_return(self, environment, policy, num_episodes=10):
         """"""
