@@ -6,6 +6,8 @@ from xmlrpc.client import Boolean
 import gym
 import numpy as np
 import tensorflow as tf
+tf.get_logger().setLevel('ERROR')  #'INFO'
+
 import os
 import sys
 import signal
@@ -272,11 +274,11 @@ class LunarLander(object):
         if self.is_debug:
             print_summary(self.q_net)
 
-        #avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+        avg = self.compute_avg_return(self.tf_env_eval, self.policy, self.cfg.num_eval_episodes) #self.agent.policy,
 
-        #if self.is_debug:
-        #    print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
-        returns = [] #[avg]
+        if self.is_debug:
+            print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
+        returns = [avg]
 
         #Set CTRL+C handler
         signal.signal(signal.SIGINT, LunarLander.handler)
@@ -286,14 +288,10 @@ class LunarLander(object):
         env_steps = tf_metrics.EnvironmentSteps()
 
         driver = py_driver.PyDriver(self.py_env,
-                                    py_tf_eager_policy.PyTFEagerPolicy(self.agent.collect_policy, use_tf_function=True),
+                                    py_tf_eager_policy.PyTFEagerPolicy(self.agent.collect_policy, use_tf_function=True), #self.agent.collect_policy
+                                    #random_py_policy.RandomPyPolicy(time_step_spec=self.py_env.time_step_spec(), action_spec=self.py_env.action_spec()),
                                     [self.rb_observer],
                                     max_steps=self.cfg.batch_size)
-
-        #time_step = self.py_env.reset()
-        #print("Times step {}".format(time_step))
-
-        #print("self.cfg.eval_interval {}".format(self.cfg.eval_interval))
 
         print("Start training at {}".format(LunarLander.dt()))
 
@@ -308,7 +306,7 @@ class LunarLander(object):
             self.collect_steps(driver, self.py_env)
 
             dataset = self.replay_buffer.as_dataset(
-                #num_parallel_calls=3,
+                num_parallel_calls=3,
                 sample_batch_size=self.cfg.batch_size,
                 num_steps=2).prefetch(3)
 
@@ -324,7 +322,7 @@ class LunarLander(object):
                 print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
             if step % self.cfg.eval_interval == 0:
-                avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+                avg = self.compute_avg_return(self.tf_env_eval, self.policy, self.cfg.num_eval_episodes) #self.agent.policy,
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
@@ -349,6 +347,8 @@ class LunarLander(object):
         total_return = 0.0
         for eps in range(num_episodes):
             time_step = environment.reset()
+            #print(time_step)
+
             episode_return = 0.0
             steps = 0
             episod_info = []
