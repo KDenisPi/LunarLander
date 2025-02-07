@@ -274,7 +274,7 @@ class LunarLander(object):
         if self.is_debug:
             print_summary(self.q_net)
 
-        avg = self.compute_avg_return(self.tf_env_eval, self.policy, self.cfg.num_eval_episodes) #self.agent.policy,
+        avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
 
         if self.is_debug:
             print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
@@ -287,8 +287,33 @@ class LunarLander(object):
         num_episodes = tf_metrics.NumberOfEpisodes()
         env_steps = tf_metrics.EnvironmentSteps()
 
+        """Generate polices"""
+        self.random_policy = random_tf_policy.RandomTFPolicy(time_step_spec=self.tf_env.time_step_spec(), action_spec=self.tf_env.action_spec())
+
+        """         Inherits From: PyPolicy
+                tf_agents.policies.random_py_policy.RandomPyPolicy(
+                    time_step_spec: tf_agents.trajectories.TimeStep,
+                    action_spec: tf_agents.typing.types.NestedArraySpec,
+                    policy_state_spec: tf_agents.typing.types.NestedArraySpec = (),
+                    info_spec: tf_agents.typing.types.NestedArraySpec = (),
+                    seed: Optional[types.Seed] = None,
+                    outer_dims: Optional[Sequence[int]] = None,
+                    observation_and_action_constraint_splitter: Optional[types.Splitter] = None
+                )
+
+                Inherits From: TFPolicy
+                tf_agents.policies.random_tf_policy.RandomTFPolicy(
+                    time_step_spec: tf_agents.trajectories.TimeStep,
+                    action_spec: tf_agents.typing.types.NestedTensorSpec,
+                    *args,
+                    **kwargs
+                )
+        """
+
         driver = py_driver.PyDriver(self.py_env,
-                                    py_tf_eager_policy.PyTFEagerPolicy(self.agent.collect_policy, use_tf_function=True), #self.agent.collect_policy
+                                    #self.random_policy,
+                                    py_tf_eager_policy.PyTFEagerPolicy(self.agent.collect_policy, use_tf_function=True),
+                                    #self.agent.collect_policy
                                     #random_py_policy.RandomPyPolicy(time_step_spec=self.py_env.time_step_spec(), action_spec=self.py_env.action_spec()),
                                     [self.rb_observer],
                                     max_steps=self.cfg.batch_size)
@@ -322,7 +347,7 @@ class LunarLander(object):
                 print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
 
             if step % self.cfg.eval_interval == 0:
-                avg = self.compute_avg_return(self.tf_env_eval, self.policy, self.cfg.num_eval_episodes) #self.agent.policy,
+                avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
@@ -435,9 +460,6 @@ class LunarLander(object):
                 train_step_counter=self.train_step_counter)
 
         self.agent.initialize()
-
-        """Generate polices"""
-        self.policy = random_tf_policy.RandomTFPolicy(time_step_spec=self.tf_env.time_step_spec(), action_spec=self.tf_env.action_spec())
 
     def gen_layer(self, num_units : int, activation: str = 'relu') -> any:
         """
