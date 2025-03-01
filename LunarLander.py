@@ -460,6 +460,7 @@ class LunarLander(object):
                 train_step_counter=self.train_step_counter)
 
         self.agent.initialize()
+        self.agent.train = common.function(self.agent)
 
     def gen_layer(self, num_units : int, activation: str = 'relu') -> any:
         """
