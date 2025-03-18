@@ -72,13 +72,13 @@ class GrGenerator:
 
 if __name__ == '__main__':
     """Generate graph"""
-    if len(sys.argv) <= 1:
-        print("No data file. Usage data_file.csv [image folder]")
-        exit()
 
     gen = GrGenerator()
 
     for prm in sys.argv:
+        if prm == "--help" or len(sys.argv) == 1:
+            print("Usage: python3 graph.py [iamages=output] file1.csv [file2.csv] ... [filen.csv]")
+            exit()
         if prm.startswith("images="):
             _, image_folder = prm.split("=")
             if image_folder:
