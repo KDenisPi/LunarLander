@@ -6,38 +6,69 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def generate_graph(data_file:str, img_folder:str = "") -> str:
-    # Read CSV file
-    df = pd.read_csv(data_file)
+class GrGenerator:
+    """Graph generator"""
+    def __init__(self):
+        self._img_folder = None
+        self.df = None
 
-    # Prepare data
-    x_data = df['Nm']
-    y_data = df['Reward']
+    @property
+    def data_file(self) -> str:
+        return self._data_file
 
-    # Create plot
-    plt.plot(x_data, y_data)
-    # plt.scatter(x_data, y_data) # Scatter plot
-    # plt.bar(x_data, y_data)     # Bar plot
+    @data_file.setter
+    def data_file(self, in_file) -> None:
+        self._data_file = in_file
+        # Read CSV file
+        self.df = pd.read_csv(self._data_file)
 
-    # Customize plot
-    plt.xlabel('Attempt')
-    plt.ylabel('Reward')
-    plt.title('Graph Reward for attempt')
-    plt.grid(True)
+    @property
+    def img_folder(self) -> str:
+        return self._img_folder
 
-    img_file = data_file.replace(".csv", ".png")
+    @img_folder.setter
+    def img_folder(self, n_val:str) -> None:
+        self._img_folder = n_val
 
-    if img_folder:
+    def gen_filename_by_func(self, file_in:str, func_name:str = "reward") -> str:
+        """Generate output filename from the input based on function name"""
+        img_file = file_in.replace(".csv", ".png")
         f_parts = img_file.split("/")
-        img_file = img_folder + "/" + f_parts[-1]
 
-    # Save image
-    plt.savefig(img_file)
+        if self.img_folder:
+            img_file = "{0}/{1}_{2}".format(self.img_folder, func_name, f_parts[-1])
+        else:
+            img_file = "{0}/{1}_{2}".format("/".join(f_parts[0,-1]), func_name, f_parts[-1])
 
-    return img_file
+        return img_file
 
-# Show plot
-#plt.show()
+
+    def generate_reward_graph(self) -> str:
+        # Selkect data
+        x_data = self.df['Nm']
+        y_data = self.df['Reward']
+
+        # Create plot
+        plt.plot(x_data, y_data)
+
+        # plt.scatter(x_data, y_data) # Scatter plot
+        # plt.bar(x_data, y_data)     # Bar plot
+
+        # Customize plot
+        plt.xlabel('Attempt')
+        plt.ylabel('Reward')
+        plt.title('Graph Reward for attempt')
+        plt.grid(True)
+
+        img_file = self.gen_filename_by_func(self.data_file)
+
+        # Save image
+        plt.savefig(img_file)
+
+        return img_file
+
+        # Show plot
+        #plt.show()
 
 if __name__ == '__main__':
     """Generate graph"""
@@ -45,11 +76,20 @@ if __name__ == '__main__':
         print("No data file. Usage data_file.csv [image folder]")
         exit()
 
-    data_file = sys.argv[1]
-    image_folder = ""
+    gen = GrGenerator()
 
-    if len(sys.argv) > 2:
-        image_folder = sys.argv[2]
+    for prm in sys.argv:
+        if prm.startswith("images="):
+            _, image_folder = prm.split("=")
+            if image_folder:
+                gen.img_folder = image_folder
 
-    img = generate_graph(data_file, image_folder)
-    print(img)
+
+    for prm in sys.argv[1:]:
+        if not prm.startswith("images="):
+            data_file = prm
+            gen.data_file = data_file
+            img = gen.generate_reward_graph()
+            print(img)
+
+
