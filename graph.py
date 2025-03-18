@@ -2,7 +2,9 @@
 
 from os import replace
 import sys
+from math import sqrt
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -18,6 +20,8 @@ class GrGenerator:
 
     @data_file.setter
     def data_file(self, in_file) -> None:
+        plt.close()
+
         self._data_file = in_file
         # Read CSV file
         self.df = pd.read_csv(self._data_file)
@@ -42,9 +46,31 @@ class GrGenerator:
 
         return img_file
 
+    def distance(self, row):
+        return sqrt(row[1]*row[1]+row[2]*row[2])
+
+    def generate_distance_graph(self) -> str:
+        """Generate deviation graph from landing point"""
+        x_data = self.df['Nm']
+        np_arr = np.asarray(self.df)
+        result = np.apply_along_axis(self.distance, 1, np_arr)
+
+        plt.xlabel('Attempt')
+        plt.ylabel('Distance')
+        plt.title('Graph deviation from landing point')
+        plt.plot(x_data, result)
+        plt.grid(True)
+
+        img_file = self.gen_filename_by_func(self.data_file, "distance")
+
+        plt.savefig(img_file)
+        plt.cla()
+        return img_file
+
 
     def generate_reward_graph(self) -> str:
-        # Selkect data
+        """Generate reward graph"""
+        # Select data
         x_data = self.df['Nm']
         y_data = self.df['Reward']
 
@@ -64,6 +90,7 @@ class GrGenerator:
 
         # Save image
         plt.savefig(img_file)
+        plt.cla()
 
         return img_file
 
@@ -89,7 +116,8 @@ if __name__ == '__main__':
         if not prm.startswith("images="):
             data_file = prm
             gen.data_file = data_file
-            img = gen.generate_reward_graph()
-            print(img)
+            img_rwd = gen.generate_reward_graph()
+            img_dist = gen.generate_distance_graph()
+            #print(img)
 
 
