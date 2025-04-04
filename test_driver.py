@@ -30,18 +30,42 @@ collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000 # @param {type:"integer"}
 
 num_actions = 4
+num_eval_episodes = 10 # @param {type:"integer"}
+eval_interval = 50 # @param {type:"integer"}
+log_interval = 25 # @param {type:"integer"}
 
-def collect_episode(environment, agent, num_episodes):
+def collect_episode(environment, num_episodes):
     """Collect data for episode"""
     driver = py_driver.PyDriver(
         environment,
-        #py_tf_eager_policy.PyTFEagerPolicy(policy, use_tf_function=True),
         random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec()),
         [rb_observer],
         max_episodes=num_episodes)
 
     initial_time_step = environment.reset()
     driver.run(initial_time_step)
+
+
+def compute_avg_return(environment, policy, num_episodes=10):
+    total_return = 0.0
+    print("Started compute_avg_return")
+
+    for eps in range(num_episodes):
+        time_step = environment.reset()
+        episode_return = 0.0
+        steps = 0
+
+        while not time_step.is_last():
+            action_step = policy.action(time_step)
+            time_step = environment.step(action_step.action)
+            episode_return += time_step.reward
+            steps = steps + 1
+        total_return += episode_return
+        print('Episode: {0} return: {1:0.2f} steps {2}'.format(eps, episode_return.numpy()[0], steps))
+
+
+    avg_return = total_return / num_episodes
+    return avg_return.numpy()[0]
 
 
 env = suite_gym.load(env_name)
@@ -151,5 +175,30 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
     table_name,
     sequence_length=2)
 
-# Collect a few episodes using collect_policy and save to the replay buffer.
-collect_episode(train_py_env, agent, collect_episodes_per_iteration)
+
+avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+returns = [avg_return]
+
+print("Start training.....")
+
+for nm_it in range(num_iterations):
+
+    # Collect a few episodes using collect_policy and save to the replay buffer.
+    collect_episode(train_py_env, collect_episodes_per_iteration)
+
+    # Use data from the buffer and update the agent's network.
+    iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
+    trajectories, _ = next(iterator)
+    train_loss = agent.train(experience=trajectories)
+
+    replay_buffer.clear()
+
+    step = agent.train_step_counter.numpy()
+
+    if step % log_interval == 0:
+        print('step = {0}: loss = {1}'.format(step, train_loss.loss))
+
+    if step % eval_interval == 0:
+        avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+        print('step = {0}: Average Return = {1}'.format(step, avg_return))
+        returns.append(avg_return)
