@@ -1,4 +1,7 @@
 docker buildx build --tag python3.11:tf_agents -f ./Dockerfile .
 
-#run file using local directory 
-docker run -v $(pwd):/app/src -w /app/src fa4dfad772fe python test_env.py
+#run file using local directory
+docker run -v $(pwd):/app/src -w /app fa4dfad772fe python ./src/test_env.py
+
+#delete all containers
+docker rm  $(docker ps -q -a)
