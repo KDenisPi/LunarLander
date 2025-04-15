@@ -7,6 +7,31 @@ The following NVIDIA® software are only required for GPU support.
     cuDNN SDK 8.9.4(7).
     (Optional) TensorRT to improve latency and throughput for inference.
     
+Note: Cuda 12.2 need on nvidia-compute-utils-G06-550.90.07-23.1.x86_64
+Solution 1: downgrade of nvidia-compute-utils-G06-570.133.07-33.1.x86_64 to nvidia-compute-utils-G06-550.90.07-23.1.x86_64
+
+#add repository
+sudo zypper install openSUSE-repos-Tumbleweed-NVIDIA
+zypper refresh
+zypper repos
+#select name od NVIDIA repo
+zypper se -r NVIDIA_repo
+#install necessary older version
+sudo zypper install --oldpackage nvidia-gl-G06-550.144.03-30.1
+
+#wget https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda-repo-opensuse15-12-8-local-12.8.1_570.124.06-1.x86_64.rpm
+#sudo rpm -i cuda-repo-opensuse15-12-8-local-12.8.1_570.124.06-1.x86_64.rpmsudo zypper refreshsudo zypper install -y cuda-toolkit-12-8
+
+wget https://developer.download.nvidia.com/compute/cuda/12.2.2/local_installers/cuda-repo-opensuse15-12-2-local-12.2.2_535.104.05-1.x86_64.rpm
+sudo rpm -i cuda-repo-opensuse15-12-2-local-12.2.2_535.104.05-1.x86_64.rpm
+
+wget https://developer.download.nvidia.com/compute/cuda/12.2.2/local_installers/cuda_12.2.2_535.104.05_linux.run
+sudo sh cuda_12.2.2_535.104.05_linux.run
+
+sudo rpm -i cuda-repo-opensuse15-12-2-local-12.2.2_535.104.05-1.x86_64.rpm
+sudo zypper refresh
+sudo zypper install -y cuda
+
 (12.2 && 8.9.4)
 https://www.tensorflow.org/install/source#tested_build_configurations
 
@@ -16,9 +41,11 @@ sudo zypper install -y cuda-toolkit-12-2
 
 //download file
 cudnn-local-repo-rhel9-8.9.4.29-1.0-1.x86_64.rpm
-//install
-sudo zypper install /home/denis/Downloads/cudnn-local-repo-rhel9-8.9.4.29-1.0-1.x86_64.rpm
-(sudo zypper install /home/denis/Downloads/cudnn-local-repo-rhel9-8.9.7.29-1.0-1.x86_64.rpm)
+
+//network install
+sudo zypper addrepo https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.reposudo 
+zypper refresh
+sudo zypper install -y cudnn
 
 
 zypper remove 
