@@ -212,11 +212,12 @@ class LunarLander(object):
         self.tf_env = tf_py_environment.TFPyEnvironment(self.py_env)
         self.tf_env_eval = tf_py_environment.TFPyEnvironment(self.py_env_eval)
 
-        self.observations = self.tf_env.time_step_spec().observation.shape[0]
+        self.fc_layer_params = 26
 
         if self.is_debug:
+            print('Input Layer parameters: {}'.format(self.fc_layer_params))
             print('Time Step Spec: {}'.format(self.tf_env.time_step_spec()))
-            print('Observation Num: {} Spec: {}'.format(self.observations, self.tf_env.time_step_spec().observation))
+            print('Observation Num: {} Spec: {}'.format(self.tf_env.time_step_spec().observation.shape[0], self.tf_env.time_step_spec().observation))
             print('Reward Spec: {}'.format(self.tf_env.time_step_spec().reward))
             print('Action Spec: {}'.format(self.tf_env.action_spec()))
 
@@ -424,8 +425,8 @@ class LunarLander(object):
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
         # with `num_actions` units to generate one q_value per available action as
         # its output.
-        input_lr = tf.keras.layers.Dense(self.observations, activation=None, name="Input")
-        work_layers = [self.gen_layer(lyer_prm["num_units_scale"]*self.observations, lyer_prm["activation"]) for lyer_prm in self.cfg.layers]
+        input_lr = tf.keras.layers.Dense(self.fc_layer_params, activation=None, name="Input")
+        work_layers = [self.gen_layer(lyer_prm["num_units_scale"]*self.fc_layer_params, lyer_prm["activation"]) for lyer_prm in self.cfg.layers]
 
         """
         Output layer - number od units equal number of actions (4 in our case)

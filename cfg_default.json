@@ -7,7 +7,7 @@
     "batch_size": 128,
     "layers": [
         {
-            "num_units_scale": 4,
+            "num_units_scale": 2,
             "activation": "relu"
         },
         {

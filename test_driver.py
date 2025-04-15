@@ -82,6 +82,8 @@ eval_py_env = suite_gym.load(env_name)
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
+fc_layer_params = 26 #sum of all parts of trajectory
+
 observations = train_env.time_step_spec().observation.shape[0]
 
 print('Time Step Spec: {}'.format(train_env.time_step_spec()))
@@ -93,10 +95,10 @@ print('Action Spec: {}'.format(train_env.action_spec()))
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
 # its output.
-input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
+input_lr = tf.keras.layers.Dense(fc_layer_params, activation=None, name="Input")
 
-nums_lyr_1 = observations
-nums_lyr_2 = observations*2
+nums_lyr_1 = fc_layer_params*2
+nums_lyr_2 = fc_layer_params*2
 
 layer_1 =  tf.keras.layers.Dense(
     nums_lyr_1,
@@ -111,7 +113,7 @@ layer_1 =  tf.keras.layers.Dense(
 layer_2 =  tf.keras.layers.Dense(
     nums_lyr_2,
     activation=tf.keras.activations.relu,
-    name="LYR_1",
+    name="LYR_2",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
         scale=1.0 if nums_lyr_2 <= 10 else 2.0,
         mode='fan_in',
@@ -129,6 +131,8 @@ q_values_layer = tf.keras.layers.Dense(
     bias_initializer=tf.keras.initializers.Constant(-0.2))
 
 q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer])
+
+print_summary(q_net)
 
 #print("Q Net Input Spec: {}".format(self.q_net.input_tensor_spec))
 #print("Q Net State Spec: {}".format(self.q_net.state_spec))
@@ -189,6 +193,9 @@ for nm_it in range(num_iterations):
     # Use data from the buffer and update the agent's network.
     iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
     trajectories, _ = next(iterator)
+
+    #print('Trajectories {}'.format(trajectories))
+    #break
     train_loss = agent.train(experience=trajectories)
 
     replay_buffer.clear()
