@@ -25,14 +25,14 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 250 # @param {type:"integer"}
+num_iterations = 1000 # @param {type:"integer"}
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000 # @param {type:"integer"}
 
 num_actions = 4
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 50 # @param {type:"integer"}
-log_interval = 25 # @param {type:"integer"}
+eval_interval = 100 # @param {type:"integer"}
+log_interval = 50 # @param {type:"integer"}
 
 def collect_episode(environment, num_episodes):
     """Collect data for episode"""
@@ -82,7 +82,7 @@ eval_py_env = suite_gym.load(env_name)
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
-fc_layer_params = 26 #sum of all parts of trajectory
+fc_layer_params = 8 #sum of all parts of trajectory
 
 observations = train_env.time_step_spec().observation.shape[0]
 
@@ -97,8 +97,8 @@ print('Action Spec: {}'.format(train_env.action_spec()))
 # its output.
 input_lr = tf.keras.layers.Dense(fc_layer_params, activation=None, name="Input")
 
-nums_lyr_1 = fc_layer_params*2
-nums_lyr_2 = fc_layer_params*2
+nums_lyr_1 = fc_layer_params*10
+nums_lyr_2 = fc_layer_params*20
 
 layer_1 =  tf.keras.layers.Dense(
     nums_lyr_1,
@@ -132,7 +132,7 @@ q_values_layer = tf.keras.layers.Dense(
 
 q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer])
 
-print_summary(q_net)
+#print_summary(q_net)
 
 #print("Q Net Input Spec: {}".format(self.q_net.input_tensor_spec))
 #print("Q Net State Spec: {}".format(self.q_net.state_spec))
@@ -145,7 +145,7 @@ agent = dqn_agent.DqnAgent(
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
-        td_errors_loss_fn=common.element_wise_squared_loss,
+        td_errors_loss_fn=None, #common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
 
 agent.initialize()
@@ -184,6 +184,7 @@ avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
 
 print("Start training.....")
+print_summary(q_net)
 
 for nm_it in range(num_iterations):
 
