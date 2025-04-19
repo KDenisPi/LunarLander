@@ -15,12 +15,10 @@ from tf_agents.environments import tf_py_environment
 from tf_agents.networks import sequential
 from tf_agents.utils import common
 from tf_agents.policies import random_py_policy
-from tf_agents.policies import py_tf_eager_policy
 from tf_agents.specs import tensor_spec
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.drivers import py_driver
-from tf_agents.metrics import tf_metrics
 from tf_agents.networks.layer_utils import print_summary
 
 
