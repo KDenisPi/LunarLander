@@ -27,8 +27,8 @@ from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.networks import sequential
 from tf_agents.utils import common
-from tf_agents.policies import random_tf_policy
 from tf_agents.policies import random_py_policy
+from tf_agents.policies import py_tf_eager_policy
 from tf_agents.specs import tensor_spec
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
@@ -177,7 +177,7 @@ class ModelParams(object):
             result = False
 
         return result
-    
+
 
     def to_string(self) -> None:
         """Current configuration"""
@@ -306,7 +306,7 @@ class LunarLander(object):
                 break
 
             # Collect a few steps and save to the replay buffer.
-            self.collect_steps(self.py_env, 2)
+            self.collect_steps(self.py_env, 2, self.agent)
 
             """
             dataset = self.replay_buffer.as_dataset(
@@ -338,12 +338,16 @@ class LunarLander(object):
         self.save_model(self.agent)
         return returns
 
-    def collect_steps(self, environment, num_episodes):
+    def collect_steps(self, environment, num_episodes, agent = None):
         """Generate polices"""
+        collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
+            agent.collect_policy, use_tf_function=True) if agent else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
+
         driver = py_driver.PyDriver(environment,
-            random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec()),
+            collect_policy,
             [self.rb_observer],
             max_episodes=num_episodes)
+
         initial_time_step = environment.reset()
         driver.run(initial_time_step)
 

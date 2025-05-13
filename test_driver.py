@@ -15,6 +15,7 @@ from tf_agents.environments import tf_py_environment
 from tf_agents.networks import sequential
 from tf_agents.utils import common
 from tf_agents.policies import random_py_policy
+from tf_agents.policies import py_tf_eager_policy
 from tf_agents.specs import tensor_spec
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
@@ -32,11 +33,15 @@ num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 100 # @param {type:"integer"}
 log_interval = 50 # @param {type:"integer"}
 
-def collect_episode(environment, num_episodes):
+def collect_episode(environment, num_episodes, agent = None):
     """Collect data for episode"""
+    #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
+    collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
+        agent.collect_policy, use_tf_function=True) if agent else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
+
     driver = py_driver.PyDriver(
         environment,
-        random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec()),
+        collect_policy,
         [rb_observer],
         max_episodes=num_episodes)
 
@@ -187,7 +192,7 @@ print_summary(q_net)
 for nm_it in range(num_iterations):
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
-    collect_episode(train_py_env, collect_episodes_per_iteration)
+    collect_episode(train_py_env, collect_episodes_per_iteration, agent)
 
     # Use data from the buffer and update the agent's network.
     iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
