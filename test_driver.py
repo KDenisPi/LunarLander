@@ -189,6 +189,12 @@ returns = [avg_return]
 print("Start training.....")
 print_summary(q_net)
 
+#for l_n in range(0,4):
+#    lyr = q_net.get_layer(index=l_n)
+#    print('Name: {} Weights: {}'.format(lyr.name, lyr.get_weights()))
+
+#exit()
+
 for nm_it in range(num_iterations):
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
