@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import base64
+from datetime import datetime
 
 import numpy as np
 import reverb
@@ -24,7 +25,7 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 1000 # @param {type:"integer"}
+num_iterations = 2000 # @param {type:"integer"}
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000 # @param {type:"integer"}
 
@@ -57,6 +58,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
         time_step = environment.reset()
         episode_return = 0.0
         steps = 0
+        tm_start = datetime.now()
 
         while not time_step.is_last():
             action_step = policy.action(time_step)
@@ -64,8 +66,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
             episode_return += time_step.reward
             steps = steps + 1
         total_return += episode_return
-        print('Episode: {0} return: {1:0.2f} steps {2}'.format(eps, episode_return.numpy()[0], steps))
-
+        print('Episode: {0} return: {1:0.2f} steps {2} Duration {3} sec'.format(eps, episode_return.numpy()[0], steps, (datetime.now()-tm_start).seconds))
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
@@ -195,6 +196,7 @@ print_summary(q_net)
 
 #exit()
 
+tm_start = datetime.now()
 for nm_it in range(num_iterations):
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
@@ -213,7 +215,8 @@ for nm_it in range(num_iterations):
     step = agent.train_step_counter.numpy()
 
     if step % log_interval == 0:
-        print('step = {0}: loss = {1}'.format(step, train_loss.loss))
+        print('step = {0}: loss = {1} Duration {2} sec'.format(step, train_loss.loss, (datetime.now()-tm_start).seconds))
+        tm_start = datetime.now()
 
     if step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)

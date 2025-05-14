@@ -12,6 +12,7 @@ import os
 import sys
 import signal
 from datetime import datetime
+from datetime import timedelta
 import json
 
 """
@@ -298,6 +299,7 @@ class LunarLander(object):
         step = self.agent.train_step_counter.numpy()
 
         print("Start training at {} From {} to {}".format(LunarLander.dt(), step, self.cfg.num_iterations))
+        tm_start = datetime.now()
 
         while step < self.cfg.num_iterations:  #really there is num of steps
 
@@ -322,7 +324,8 @@ class LunarLander(object):
 
             step = self.agent.train_step_counter.numpy()
             if step % self.cfg.log_interval == 0:
-                print('step = {0}: loss = {1:0.2f}'.format(step, train_loss))
+                print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
+                tm_start = datetime.now()
 
             if step % self.cfg.eval_interval == 0:
                 avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
@@ -358,6 +361,7 @@ class LunarLander(object):
 
         total_return = 0.0
         for eps in range(num_episodes):
+            tm_start = datetime.now()
             time_step = environment.reset()
             #print(time_step)
 
@@ -379,11 +383,12 @@ class LunarLander(object):
                     step_res = [steps] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], action_step.action.numpy()[0], int(time_step.is_last())]
                     episod_info.append(step_res)
 
+            tm_diff = datetime.now() - tm_start
             if self.is_debug:
                 self.print_info(episod_info, eps)
 
             total_return += episode_return
-            print('Episode: {0} return: {1:0.2f} steps {2}'.format(eps, episode_return.numpy()[0], steps))
+            print('Episode: {0} return: {1:0.2f} steps {2} Duration {3} sec'.format(eps, episode_return.numpy()[0], steps, tm_diff.seconds))
 
         print("Finished compute average at {}".format(LunarLander.dt()))
 
