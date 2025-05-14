@@ -3,5 +3,8 @@ docker buildx build --tag python3.11:tf_agents -f ./Dockerfile .
 #run file using local directory
 docker run -v $(pwd):/app/src -w /app fa4dfad772fe python ./src/test_env.py
 
+#mount local folder to container for write - looks like it is available by default (:ro for read only)
+docker run -v $(pwd):/app/src:rw -w /app fa4dfad772fe python ./src/test_env.py
+
 #delete all containers
 docker rm  $(docker ps -q -a)
