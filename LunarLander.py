@@ -310,12 +310,6 @@ class LunarLander(object):
             # Collect a few steps and save to the replay buffer.
             self.collect_steps(self.py_env, 2, self.agent)
 
-            """
-            dataset = self.replay_buffer.as_dataset(
-                num_parallel_calls=3,
-                sample_batch_size=self.cfg.batch_size,
-                num_steps=2).prefetch(3)
-            """
             iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
             trajectories, _ = next(iterator)
             train_loss = self.agent.train(experience=trajectories).loss

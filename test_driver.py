@@ -3,6 +3,7 @@
 import os
 import base64
 from datetime import datetime
+import signal
 
 import numpy as np
 import reverb
@@ -25,14 +26,23 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 2000 # @param {type:"integer"}
+num_iterations = 10000 # 2000 @param {type:"integer"}
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000 # @param {type:"integer"}
 
 num_actions = 4
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 100 # @param {type:"integer"}
-log_interval = 50 # @param {type:"integer"}
+eval_interval = 1000 # 100 @param {type:"integer"}
+log_interval = 200 # 50 @param {type:"integer"}
+
+bFinishTrain = False
+
+def handler(signum, frame):
+    """Signal processing handler"""
+    signame = signal.Signals(signum).name
+    print(f'Signal handler called with signal {signame} ({signum})')
+    bFinishTrain = True
+
 
 def collect_episode(environment, num_episodes, agent = None):
     """Collect data for episode"""
@@ -72,6 +82,10 @@ def compute_avg_return(environment, policy, num_episodes=10):
     return avg_return.numpy()[0]
 
 
+#Set CTRL+C handler
+signal.signal(signal.SIGINT, handler)
+
+
 env = suite_gym.load(env_name)
 env.reset()
 
@@ -102,14 +116,14 @@ print('Action Spec: {}'.format(train_env.action_spec()))
 input_lr = tf.keras.layers.Dense(fc_layer_params, activation=None, name="Input")
 
 nums_lyr_1 = fc_layer_params*10
-nums_lyr_2 = fc_layer_params*20
+nums_lyr_2 = fc_layer_params*10
 
 layer_1 =  tf.keras.layers.Dense(
     nums_lyr_1,
     activation=tf.keras.activations.relu,
     name="LYR_1",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0 if nums_lyr_1 <= 10 else 2.0,
+        scale=1.0, #if nums_lyr_1 <= 10 else 2.0,
         mode='fan_in',
         distribution='truncated_normal')
     )
@@ -119,7 +133,7 @@ layer_2 =  tf.keras.layers.Dense(
     activation=tf.keras.activations.relu,
     name="LYR_2",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0 if nums_lyr_2 <= 10 else 2.0,
+        scale=1.0, #if nums_lyr_2 <= 10 else 2.0,
         mode='fan_in',
         distribution='truncated_normal')
     )
@@ -184,20 +198,23 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
     sequence_length=2)
 
 
-avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-returns = [avg_return]
-
 print("Start training.....")
 print_summary(q_net)
 
-#for l_n in range(0,4):
-#    lyr = q_net.get_layer(index=l_n)
-#    print('Name: {} Weights: {}'.format(lyr.name, lyr.get_weights()))
+for l_n in range(0,4):
+    lyr = q_net.get_layer(index=l_n)
+    print('Name: {} Trainamle: {} Config: {}'.format(lyr.name, lyr.trainable, lyr.get_config()))
+#    #print('Name: {} Weights: {}'.format(lyr.name, lyr.get_weights()))
 
 #exit()
 
+avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+returns = [avg_return]
+
 tm_start = datetime.now()
-for nm_it in range(num_iterations):
+
+step = agent.train_step_counter.numpy()
+for step in range(num_iterations):
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
@@ -222,3 +239,10 @@ for nm_it in range(num_iterations):
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
         print('step = {0}: Average Return = {1}'.format(step, avg_return))
         returns.append(avg_return)
+
+    if bFinishTrain:
+        break
+
+print("Training finished.....")
+print(returns)
+print_summary(q_net)
