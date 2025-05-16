@@ -6,7 +6,7 @@ The following NVIDIA® software are only required for GPU support.
     CUDA® Toolkit 12.2.
     cuDNN SDK 8.9.4(7).
     (Optional) TensorRT to improve latency and throughput for inference.
-    
+
 Note: Cuda 12.2 need on nvidia-compute-utils-G06-550.90.07-23.1.x86_64
 Solution 1: downgrade of nvidia-compute-utils-G06-570.133.07-33.1.x86_64 to nvidia-compute-utils-G06-550.90.07-23.1.x86_64
 
@@ -35,20 +35,20 @@ sudo zypper install -y cuda
 (12.2 && 8.9.4)
 https://www.tensorflow.org/install/source#tested_build_configurations
 
-sudo zypper addrepo https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.reposudo 
-zypper refresh    
+sudo zypper addrepo https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.reposudo
+zypper refresh
 sudo zypper install -y cuda-toolkit-12-2
 
 //download file
 cudnn-local-repo-rhel9-8.9.4.29-1.0-1.x86_64.rpm
 
 //network install
-sudo zypper addrepo https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.reposudo 
+sudo zypper addrepo https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.reposudo
 zypper refresh
 sudo zypper install -y cudnn
 
 
-zypper remove 
+zypper remove
 -u, --clean-deps            Automatically remove unneeded dependencies.
 
 python 3.11
@@ -67,14 +67,31 @@ pip install --no-cache-dir tf-keras==2.15.0
 pip install --no-cache-dir dm-reverb==0.14.0
 pip install --no-cache-dir tf_agents==0.19.0
 pip install Box2D
-nvidia-smi 
+nvidia-smi
 nvtop - GPU loading
 
 //---- sometimes -----
  pip3 install setuptools
- 
+
  $ pip install tensorflow
 $ pip install dm-reverb
 $ pip install tf-agents
 
 ModuleNotFoundError: No module named 'distutils'
+
+
+// --- TensorRT ----
+# Assuming you have downloaded TensorRT-10.x.x.x.Linux.x86_64-gnu.cuda-x.x.tar.gz
+
+# 1. Extract the tar file
+tar -xzvf TensorRT-10.x.x.x.Linux.x86_64-gnu.cuda-x.x.tar.gz
+
+# 2. Navigate to the extracted directory
+cd TensorRT-10.x.x.x
+
+# 3. Set LD_LIBRARY_PATH (adjust path if needed)
+export LD_LIBRARY_PATH=$PWD/lib:$LD_LIBRARY_PATH
+
+# 4. Install Python wheel file (adjust Python version as needed)
+cd python
+python3 -m pip install tensorrt-*-cp3x-none-linux_x86_64.whl
