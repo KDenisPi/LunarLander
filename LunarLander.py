@@ -88,8 +88,8 @@ class ModelParams(object):
 
         self.layers_cfg = [
             {
-                "num_units_scale": 4,
-                "activation": "gelu"
+                "num_units_scale": 2,
+                "activation": "relu"
             },
             {
                 "num_units_scale": 2,
@@ -182,12 +182,15 @@ class ModelParams(object):
 
     def to_string(self) -> None:
         """Current configuration"""
-        print("replay_buffer_max_length {}\nnum_eval_episodes {}\nnum_iterations {}\nlog_interval {}\neval_interval {}\nbatch_size {}".format(self.replay_buffer_max_length,
-                                                                                                                                              self.num_eval_episodes,
-                                                                                                                                              self.num_iterations,
-                                                                                                                                              self.log_interval,
-                                                                                                                                              self.eval_interval,
-                                                                                                                                              self.batch_size))
+        print("replay_buffer_max_length {}\nnum_eval_episodes {}" \
+            "\nnum_iterations {}\nlog_interval {}\neval_interval {}\nbatch_size {}".format(
+            self.replay_buffer_max_length,
+            self.num_eval_episodes,
+            self.num_iterations,
+            self.log_interval,
+            self.eval_interval,
+            self.batch_size)
+        )
 
 
 class LunarLander(object):
@@ -196,18 +199,22 @@ class LunarLander(object):
     #Correctly finish train by CTRL+C
     bFinishTrain = False
 
+    @staticmethod
     def handler(signum, frame):
         """Signal processing handler"""
         signame = signal.Signals(signum).name
         print(f'Signal handler called with signal {signame} ({signum})')
         LunarLander.bFinishTrain = True
 
+    @staticmethod
     def dt() -> str:
         return str(datetime.now())
 
     def __init__(self, cfg_name: Optional [str] = None, model_name: Optional [str] = None) -> None:
-
         """Initialization"""
+
+        print("Detected GPU: {tf.config.list_physical_devices('GPU')}")
+
         self.cfg = ModelParams()
         if cfg_name:
             res = self.cfg.load_ml_params(cfg_name)
@@ -276,6 +283,9 @@ class LunarLander(object):
 
     def train_agent(self) -> any:
         """Train network"""
+
+        tm_start = datetime.now()
+
         if self.is_debug:
             print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
         self.agent.train_step_counter.assign(self.train_step_counter)
@@ -326,7 +336,8 @@ class LunarLander(object):
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
-        print("Finish training at {}".format(LunarLander.dt()))
+        tm_interval = datetime.now() - tm_start
+        print("Finish training at {} Duration: {}".format(LunarLander.dt(), tm_interval))
 
         if self.is_debug:
             print_summary(self.q_net)
@@ -357,7 +368,6 @@ class LunarLander(object):
         for eps in range(num_episodes):
             tm_start = datetime.now()
             time_step = environment.reset()
-            #print(time_step)
 
             episode_return = 0.0
             steps = 0

@@ -85,14 +85,8 @@ def compute_avg_return(environment, policy, num_episodes=10):
 #Set CTRL+C handler
 signal.signal(signal.SIGINT, handler)
 
-
 env = suite_gym.load(env_name)
 env.reset()
-
-#print('Observation Spec:')
-#print(env.time_step_spec().observation)
-#print('Action Spec:')
-#print(env.action_spec())
 
 train_py_env = suite_gym.load(env_name)
 eval_py_env = suite_gym.load(env_name)
@@ -211,6 +205,7 @@ for l_n in range(0,4):
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
 
+tm_g_start = datetime.now()
 tm_start = datetime.now()
 
 step = agent.train_step_counter.numpy()
@@ -243,6 +238,6 @@ for step in range(num_iterations):
     if bFinishTrain:
         break
 
-print("Training finished.....")
+print("Training finished..... {}".format(datetime.now() - tm_g_start))
 print(returns)
 print_summary(q_net)
