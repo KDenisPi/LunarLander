@@ -4,7 +4,7 @@ import gym
 
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
-
+from tf_agents.specs import tensor_spec
 
 
 def test_env() -> None:
@@ -30,6 +30,10 @@ def test_env() -> None:
     print('Reward Spec: {}'.format(tf_env.time_step_spec().reward))
     print('Action Spec: {}'.format(tf_env.action_spec()))
 
+
+    action_tensor_spec = tensor_spec.from_spec(tf_env.action_spec())
+    num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
+    print('Num actions: {}'.format(num_actions))
 
 if __name__ == '__main__':
     test_env()

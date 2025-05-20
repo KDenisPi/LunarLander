@@ -88,11 +88,13 @@ class ModelParams(object):
 
         self.layers_cfg = [
             {
-                "num_units_scale": 2,
+                "num_units_scale": 1,
+                "layer_params": 100,
                 "activation": "relu"
             },
             {
-                "num_units_scale": 2,
+                "num_units_scale": 1,
+                "layer_params": 50,
                 "activation": "relu"
             }
         ]
@@ -230,12 +232,17 @@ class LunarLander(object):
         self.tf_env = tf_py_environment.TFPyEnvironment(self.py_env)
         self.tf_env_eval = tf_py_environment.TFPyEnvironment(self.py_env_eval)
 
-        self.fc_layer_params = 8
+
+        action_tensor_spec = self.tf_env.action_spec()
+        self.num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
+
+        self.observations = self.tf_env.time_step_spec().observation.shape[0]
 
         self.cfg.to_string()
 
         if self.is_debug:
-            print('Input Layer parameters: {}'.format(self.fc_layer_params))
+            print('Number actions: {}'.format(self.num_actions))
+            print('Input Layer parameters: {}'.format(self.num_actions))
             print('Time Step Spec: {}'.format(self.tf_env.time_step_spec()))
             print('Observation Num: {} Spec: {}'.format(self.tf_env.time_step_spec().observation.shape[0], self.tf_env.time_step_spec().observation))
             print('Reward Spec: {}'.format(self.tf_env.time_step_spec().reward))
@@ -322,10 +329,7 @@ class LunarLander(object):
 
             iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
             trajectories, _ = next(iterator)
-            train_loss = self.agent.train(experience=trajectories).loss
-
-            self.replay_buffer.clear()
-
+            train_loss = self.agent.train(experience=trajectories).lossself.observations
             step = self.agent.train_step_counter.numpy()
             if step % self.cfg.log_interval == 0:
                 print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
@@ -405,7 +409,10 @@ class LunarLander(object):
             return False
 
         headers = ['Nm','X','Y','Vx','Vy','Angle','Va','LegL','LegR','StT','Reward','Action','Last']
-        csv_file = '{0}{1}_{2}.csv'.format(self.cfg.debug_data, self.agent.train_step_counter.numpy(), episode)
+        csv_file = '{0}{1}_{2}_{3}.csv'.format(self.cfg.debug_data,
+                                               self.model_name if self.model_name else 'General',
+                                               self.agent.train_step_counter.numpy(),
+                                               episode)
         with open(csv_file, "w") as fd_write:
             fd_write.write(",".join(headers)+'\n')
             for ln in data:
@@ -418,15 +425,12 @@ class LunarLander(object):
         """Generate model
         Load previosly detected weights if needed
         """
-        action_tensor_spec = self.tf_env.action_spec()
-        self.num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
-        print('Number actions: {}'.format(self.num_actions))
 
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
         # with `num_actions` units to generate one q_value per available action as
         # its output.
-        input_lr = tf.keras.layers.Dense(self.fc_layer_params, activation=None, name="Input")
-        work_layers = [self.gen_layer(lyer_prm["num_units_scale"]*self.fc_layer_params, lyer_prm["activation"]) for lyer_prm in self.cfg.layers]
+        #input_lr = tf.keras.layers.Dense(self.observations, activation=None, name="Input")
+        work_layers = [self.gen_layer(lyer_prm["num_units_scale"]*lyer_prm["layer_params"], lyer_prm["activation"]) for lyer_prm in self.cfg.layers]
 
         """
         Output layer - number od units equal number of actions (4 in our case)
@@ -438,11 +442,11 @@ class LunarLander(object):
             kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
-        layers = [input_lr] + work_layers + [q_values_layer]
-        self.q_net = sequential.Sequential(layers)
+        #layers = [input_lr] + work_layers + [q_values_layer]
+        #self.q_net = sequential.Sequential(layers=layers, name="LLand")
 
-        #rint("Q Net Input Spec: {}".format(self.q_net.input_tensor_spec))
-        #print("Q Net State Spec: {}".format(self.q_net.state_spec))
+        layers = work_layers + [q_values_layer]
+        self.q_net = sequential.Sequential(layers=layers, input_spec=self.tf_env.time_step_spec().observation, name="LLand")
 
         self.train_step_counter = tf.Variable(0)
         self.agent = dqn_agent.DqnAgent(
@@ -454,7 +458,6 @@ class LunarLander(object):
                 train_step_counter=self.train_step_counter)
 
         self.agent.initialize()
-        #self.agent.train = common.function(self.agent)
         self.agent.train = common.function(self.agent.train)
 
     def gen_layer(self, num_units : int, activation: str = 'relu') -> any:

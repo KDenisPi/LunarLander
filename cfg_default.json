@@ -7,11 +7,13 @@
     "batch_size": 2,
     "layers": [
         {
-            "num_units_scale": 10,
+            "num_units_scale": 1,
+            "layer_params": 100,
             "activation": "relu"
         },
         {
-            "num_units_scale": 10,
+            "num_units_scale": 1,
+            "layer_params": 50,
             "activation": "relu"
         }
     ]
