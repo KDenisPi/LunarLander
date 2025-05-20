@@ -329,7 +329,7 @@ class LunarLander(object):
 
             iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
             trajectories, _ = next(iterator)
-            train_loss = self.agent.train(experience=trajectories).lossself.observations
+            train_loss = self.agent.train(experience=trajectories).loss
             step = self.agent.train_step_counter.numpy()
             if step % self.cfg.log_interval == 0:
                 print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
