@@ -61,7 +61,7 @@ from tf_agents.networks.layer_utils import print_summary
 class ModelParams(object):
     """Parameters for model"""
 
-    s_replay_buffer_max_length = 2000
+    s_replay_buffer_max_length = 40000
     s_num_eval_episodes = 10
     s_num_iterations = 20000
     s_log_interval = 200
@@ -90,7 +90,8 @@ class ModelParams(object):
             {
                 "num_units_scale": 1,
                 "layer_params": 100,
-                "activation": "relu"
+                "activation": "relu",
+                "bias_initializer": -0.2
             },
             {
                 "num_units_scale": 1,
@@ -156,15 +157,26 @@ class ModelParams(object):
                 """Layers configuration"""
 
                 if ModelParams.s_layers not in ml_parameters or len(ml_parameters[ModelParams.s_layers])==0:
-                    print("Invalid layers configuration")
+                    print("Invalid/absent layers configuration.")
                     return False
 
                 self.layers_cfg = ml_parameters[ModelParams.s_layers]
                 for layer in self.layers_cfg:
                     if "activation" not in layer or layer["activation"] not in ["relu", "gelu"]:
                         layer["activation"] = "relu"
-                    if "num_units_scale" not in layer or layer["num_units_scale"] <=0 or layer["num_units_scale"] > 20:
-                        print("Error. Invalid layer configuration. Value for num_units_scale is missing or incorrect.")
+
+                    if "bias_initializer" in layer and (layer["bias_initializer"] > 1 or  layer["bias_initializer"] < -1):
+                        print("Error. Invalid layer configuration. Value for bias_initializer should be between (-1,1).")
+                        return False
+
+                    if "layer_params" not in layer:
+                        print("Error. Invalid layer configuration. Value for layer_params is absent.")
+                        return False
+
+                    if "num_units_scale" not in layer:
+                        layer["num_units_scale"] = 1
+                    elif layer["num_units_scale"] <= 0 or layer["num_units_scale"] > 20:
+                        print("Error. Invalid layer configuration. Value for num_units_scale is incorrect.")
                         return False
 
             except json.JSONDecodeError as jerr:
@@ -242,9 +254,11 @@ class LunarLander(object):
 
         if self.is_debug:
             print('Number actions: {}'.format(self.num_actions))
-            print('Input Layer parameters: {}'.format(self.num_actions))
+            print('Parameters in Input Layer : {}'.format(self.num_actions))
+            print('Observation Num: {}'.format(self.tf_env.time_step_spec().observation.shape[0]))
+
             print('Time Step Spec: {}'.format(self.tf_env.time_step_spec()))
-            print('Observation Num: {} Spec: {}'.format(self.tf_env.time_step_spec().observation.shape[0], self.tf_env.time_step_spec().observation))
+            print('Observation Spec: {}'.format(self.tf_env.time_step_spec().observation))
             print('Reward Spec: {}'.format(self.tf_env.time_step_spec().reward))
             print('Action Spec: {}'.format(self.tf_env.action_spec()))
 
@@ -308,10 +322,6 @@ class LunarLander(object):
 
         #Set CTRL+C handler
         signal.signal(signal.SIGINT, LunarLander.handler)
-
-        # Reset the environment.
-        num_episodes = tf_metrics.NumberOfEpisodes()
-        env_steps = tf_metrics.EnvironmentSteps()
 
         step = self.agent.train_step_counter.numpy()
 
@@ -423,7 +433,7 @@ class LunarLander(object):
 
     def model_prepare(self):
         """Generate model
-        Load previosly detected weights if needed
+        Load previosly detected weights if needed (not implemented)
         """
 
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
@@ -460,24 +470,31 @@ class LunarLander(object):
         self.agent.initialize()
         self.agent.train = common.function(self.agent.train)
 
-    def gen_layer(self, num_units : int, activation: str = 'relu') -> any:
+    def gen_layer(self, layer_info) -> any:
         """
         VarianceScaling
         With distribution="truncated_normal" or "untruncated_normal",
         samples are drawn from a truncated/untruncated normal distribution with a mean of zero and
-        a standard deviation (after truncation, if used) stddev = sqrt(scale / n), where n is:
+        a standard deviation (after truncation, if used) stddev = sqrt(scale/n), where n is:
         number of input units in the weight tensor, if mode="fan_in"
         """
-        l_name = "{}_{}".format(activation, num_units)
+
+        num_units = layer_info["num_units_scale"]*layer_info["layer_params"]
+        l_name = layer_info["name"] if "name" in layer_info else "{}_{}".format(layer_info["activation"], num_units)
+
+        print("Layer {} parameters:".format(l_name))
+        for key, value in layer_info.items():
+            print("{} : {}".format(key, value))
 
         return tf.keras.layers.Dense(
             num_units,
-            activation=tf.keras.activations.gelu if activation == 'gelu' else tf.keras.activations.relu,
+            activation=tf.keras.activations.gelu if layer_info["activation"] == 'gelu' else tf.keras.activations.relu,
             name=l_name,
             kernel_initializer=tf.keras.initializers.VarianceScaling(
                 scale=1.0 if num_units <= 10 else 2.0,
                 mode='fan_in',
-                distribution='truncated_normal')
+                distribution='truncated_normal'),
+            bias_initializer=None if "bias_initializer" not in layer_info else tf.keras.initializers.Constant(layer_info["bias_initializer"])
             )
 
     def reply_buffer_prepare(self):
