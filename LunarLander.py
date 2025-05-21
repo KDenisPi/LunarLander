@@ -291,7 +291,7 @@ class LunarLander(object):
     def train_agent(self) -> any:
         """Train network"""
 
-        tm_start = datetime.now()
+        tm_global_start = datetime.now()
 
         if self.is_debug:
             print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
@@ -340,7 +340,7 @@ class LunarLander(object):
                 print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
                 returns.append(avg)
 
-        tm_interval = datetime.now() - tm_start
+        tm_interval = datetime.now() - tm_global_start
         print("Finish training at {} Duration: {}".format(LunarLander.dt(), tm_interval))
 
         if self.is_debug:
