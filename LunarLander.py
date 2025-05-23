@@ -335,7 +335,7 @@ class LunarLander(object):
                 break
 
             # Collect a few steps and save to the replay buffer.
-            self.collect_steps(self.py_env, 2, self.agent)
+            self.collect_steps(self.py_env, 2)#, self.agent)
 
             iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
             trajectories, _ = next(iterator)
@@ -440,7 +440,7 @@ class LunarLander(object):
         # with `num_actions` units to generate one q_value per available action as
         # its output.
         #input_lr = tf.keras.layers.Dense(self.observations, activation=None, name="Input")
-        work_layers = [self.gen_layer(lyer_prm["num_units_scale"]*lyer_prm["layer_params"], lyer_prm["activation"]) for lyer_prm in self.cfg.layers]
+        work_layers = [self.gen_layer(lyer_prm) for lyer_prm in self.cfg.layers]
 
         """
         Output layer - number od units equal number of actions (4 in our case)
