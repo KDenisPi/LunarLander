@@ -309,24 +309,24 @@ class LunarLander(object):
 
         if self.is_debug:
             print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
-        self.agent.train_step_counter.assign(self.train_step_counter)
-
-        if self.is_debug:
             print_summary(self.q_net)
 
-        avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
+        self.agent.train_step_counter.assign(self.train_step_counter)
+
+        avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
+        returns = [avg]
 
         if self.is_debug:
             print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
-        returns = [avg]
 
         #Set CTRL+C handler
         signal.signal(signal.SIGINT, LunarLander.handler)
 
         step = self.agent.train_step_counter.numpy()
+        tm_start = datetime.now()
+        self.replay_buffer.clear()
 
         print("Start training at {} From {} to {}".format(LunarLander.dt(), step, self.cfg.num_iterations))
-        tm_start = datetime.now()
 
         while step < self.cfg.num_iterations:  #really there is num of steps
 
@@ -337,18 +337,30 @@ class LunarLander(object):
             # Collect a few steps and save to the replay buffer.
             self.collect_steps(self.py_env, 2, self.agent)
 
-            iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
-            trajectories, _ = next(iterator)
-            train_loss = self.agent.train(experience=trajectories).loss
-            step = self.agent.train_step_counter.numpy()
-            if step % self.cfg.log_interval == 0:
-                print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
-                tm_start = datetime.now()
+            counter = 0
+            while counter < self.replay_buffer.num_frames():
+                iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
+                trajectories, _ = next(iterator)
+                train_loss = self.agent.train(experience=trajectories).loss
 
-            if step % self.cfg.eval_interval == 0:
-                avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
-                print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
-                returns.append(avg)
+                step = self.agent.train_step_counter.numpy()
+
+                if step % self.cfg.log_interval == 0:
+                    print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
+                    tm_start = datetime.now()
+
+                if step % self.cfg.eval_interval == 0:
+                    avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
+                    print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
+                    returns.append(avg)
+
+                counter = counter + 1
+
+                if LunarLander.bFinishTrain:
+                    print("Finish flag detected")
+                    break
+
+            self.replay_buffer.clear()
 
         tm_interval = datetime.now() - tm_global_start
         print("Finish training at {} Duration: {}".format(LunarLander.dt(), tm_interval))

@@ -26,14 +26,13 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 10000 # 2000 @param {type:"integer"}
+num_iterations = 3000 # 2000 @param {type:"integer"}
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000 # @param {type:"integer"}
 
-num_actions = 4
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 1000 # 100 @param {type:"integer"}
-log_interval = 200 # 50 @param {type:"integer"}
+eval_interval = 500 # 100 @param {type:"integer"}
+log_interval = 100 # 50 @param {type:"integer"}
 
 bFinishTrain = False
 
@@ -44,11 +43,11 @@ def handler(signum, frame):
     bFinishTrain = True
 
 
-def collect_episode(environment, num_episodes, agent = None):
+def collect_episode(environment, num_episodes, agent):
     """Collect data for episode"""
     #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
-    collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
-        agent.collect_policy, use_tf_function=True) if agent else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
+    collect_policy = random_py_policy.RandomPyPolicy(time_step_spec=env.time_step_spec(), action_spec=env.action_spec())
+    #collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
 
     driver = py_driver.PyDriver(
         environment,
@@ -61,9 +60,9 @@ def collect_episode(environment, num_episodes, agent = None):
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
-    total_return = 0.0
     print("Started compute_avg_return")
 
+    total_return = 0.0
     for eps in range(num_episodes):
         time_step = environment.reset()
         episode_return = 0.0
@@ -94,32 +93,36 @@ eval_py_env = suite_gym.load(env_name)
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
-fc_layer_params = 8 #sum of all parts of trajectory
+action_tensor_spec = train_env.action_spec()
+num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 observations = train_env.time_step_spec().observation.shape[0]
 
+print("Num actions: {}".format(num_actions))
+print("Num observations: {}".format(observations))
+
 print('Time Step Spec: {}'.format(train_env.time_step_spec()))
-print('Observation Num: {} Spec: {}'.format(observations, train_env.time_step_spec().observation))
+print('Observation Spec: {}'.format(train_env.time_step_spec().observation))
 print('Reward Spec: {}'.format(train_env.time_step_spec().reward))
 print('Action Spec: {}'.format(train_env.action_spec()))
-
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
 # its output.
-input_lr = tf.keras.layers.Dense(fc_layer_params, activation=None, name="Input")
+input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
 
-nums_lyr_1 = fc_layer_params*10
-nums_lyr_2 = fc_layer_params*10
+nums_lyr_1 = observations*5
+nums_lyr_2 = observations*8
 
 layer_1 =  tf.keras.layers.Dense(
     nums_lyr_1,
     activation=tf.keras.activations.relu,
     name="LYR_1",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0, #if nums_lyr_1 <= 10 else 2.0,
+        scale=1.0 if nums_lyr_1 <= 10 else 2.0,
         mode='fan_in',
-        distribution='truncated_normal')
+        distribution='truncated_normal'),
+    bias_initializer=tf.keras.initializers.Constant(-0.2)
     )
 
 layer_2 =  tf.keras.layers.Dense(
@@ -127,9 +130,10 @@ layer_2 =  tf.keras.layers.Dense(
     activation=tf.keras.activations.relu,
     name="LYR_2",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0, #if nums_lyr_2 <= 10 else 2.0,
+        scale=1.0 if nums_lyr_2 <= 10 else 2.0,
         mode='fan_in',
-        distribution='truncated_normal')
+        distribution='truncated_normal'),
+    bias_initializer=tf.keras.initializers.Constant(-0.2)
     )
 
 """
@@ -144,11 +148,6 @@ q_values_layer = tf.keras.layers.Dense(
 
 q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer])
 
-#print_summary(q_net)
-
-#print("Q Net Input Spec: {}".format(self.q_net.input_tensor_spec))
-#print("Q Net State Spec: {}".format(self.q_net.state_spec))
-
 optimizer = tf.keras.optimizers.Adam() #use lerning rate by default 0.001
 train_step_counter = tf.Variable(0)
 
@@ -161,7 +160,6 @@ agent = dqn_agent.DqnAgent(
         train_step_counter=train_step_counter)
 
 agent.initialize()
-#self.agent.train = common.function(self.agent)
 agent.train = common.function(agent.train)
 
 """Prepre replay buffer"""
@@ -195,48 +193,78 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
 print("Start training.....")
 print_summary(q_net)
 
-for l_n in range(0,4):
-    lyr = q_net.get_layer(index=l_n)
-    print('Name: {} Trainamle: {} Config: {}'.format(lyr.name, lyr.trainable, lyr.get_config()))
+#for l_n in range(0,4):
+#    lyr = q_net.get_layer(index=l_n)
+#    print('Name: {} Trainamle: {} Config: {}'.format(lyr.name, lyr.trainable, lyr.get_config()))
 #    #print('Name: {} Weights: {}'.format(lyr.name, lyr.get_weights()))
 
 #exit()
 
-avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+avg_return = 0 #compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
 
 tm_g_start = datetime.now()
 tm_start = datetime.now()
 
+replay_buffer.clear()
+
 step = agent.train_step_counter.numpy()
-for step in range(num_iterations):
+print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), step))
+
+while step < num_iterations:
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
+    num_frames = replay_buffer.num_frames()
+    print("Frames in reply buffer: {}".format(num_frames))
 
-    # Use data from the buffer and update the agent's network.
-    iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
-    trajectories, _ = next(iterator)
+    counter = 0
 
-    #print('Trajectories {}'.format(trajectories))
-    #break
-    train_loss = agent.train(experience=trajectories)
+    #print("Iterator element spec: {}".format(iterator.element_spec))
+    """
+    while iterator and counter <= 10:
+        trajectories, _ = next(iterator)
+        print(trajectories)
+        print("{0} Action:{1} Reward:{2} Step type: {3}".format(counter,
+                                                            trajectories.action.numpy(),
+                                                            trajectories.reward.numpy(),
+                                                            trajectories.step_type.numpy()))
+        counter = counter + 1
+        break
 
     replay_buffer.clear()
+    print("Frames in reply buffer: {}".format(replay_buffer.num_frames()))
+    exit()
+    """
 
-    step = agent.train_step_counter.numpy()
+    iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
+    while counter < num_frames:
+        # Use data from the buffer and update the agent's network.
+        trajectories, _ = next(iterator)
 
-    if step % log_interval == 0:
-        print('step = {0}: loss = {1} Duration {2} sec'.format(step, train_loss.loss, (datetime.now()-tm_start).seconds))
-        tm_start = datetime.now()
+        train_loss = agent.train(experience=trajectories)
 
-    if step % eval_interval == 0:
-        avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-        print('step = {0}: Average Return = {1}'.format(step, avg_return))
-        returns.append(avg_return)
+        step = agent.train_step_counter.numpy()
+        if step % log_interval == 0:
+            print('step = {0}: loss = {1} Duration {2} sec'.format(step, train_loss.loss, (datetime.now()-tm_start).seconds))
+            tm_start = datetime.now()
+
+        if step % eval_interval == 0:
+            avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+            print('step = {0}: Average Return = {1}'.format(step, avg_return))
+            returns.append(avg_return)
+
+        counter = counter + 1
+
+        if bFinishTrain:
+            break
+
+    replay_buffer.clear()
+    print("Current step: {}".format(step))
 
     if bFinishTrain:
         break
+
 
 print("Training finished..... {}".format(datetime.now() - tm_g_start))
 print(returns)
