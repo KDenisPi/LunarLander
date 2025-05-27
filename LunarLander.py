@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 from typing import Any, Optional
 from xmlrpc.client import Boolean
 import gym
@@ -64,8 +65,8 @@ class ModelParams(object):
     s_replay_buffer_max_length = 40000
     s_num_eval_episodes = 10
     s_num_iterations = 20000
-    s_log_interval = 200
-    s_eval_interval = 1000
+    s_log_interval = 1000
+    s_eval_interval = 2000
     s_batch_size = 2
     s_debug = True
     s_debug_data = 'data/'
@@ -428,6 +429,10 @@ class LunarLander(object):
     def print_info(self, data:list, episode:int) -> bool:
         """Print episode information to CSV format"""
         if not self.is_debug:
+            return False
+
+        if not os.path.exists(self.cfg.debug_data):
+            #print("Folder {} does not exist.".format(self.cfg.debug_data))
             return False
 
         headers = ['Nm','X','Y','Vx','Vy','Angle','Va','LegL','LegR','StT','Reward','Action','Last']

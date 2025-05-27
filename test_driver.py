@@ -26,33 +26,35 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 3000 # 2000 @param {type:"integer"}
+num_iterations = 10000 # 2000 @param {type:"integer"}
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 500 # 100 @param {type:"integer"}
-log_interval = 100 # 50 @param {type:"integer"}
+eval_interval = 2500 # 100 @param {type:"integer"}
+log_interval = 500 # 50 @param {type:"integer"}
 
-bFinishTrain = False
+finish_train = False
 
 def handler(signum, frame):
     """Signal processing handler"""
     signame = signal.Signals(signum).name
     print(f'Signal handler called with signal {signame} ({signum})')
-    bFinishTrain = True
+    global finish_train
+    finish_train = True
 
 
 def collect_episode(environment, num_episodes, agent):
     """Collect data for episode"""
     #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
-    collect_policy = random_py_policy.RandomPyPolicy(time_step_spec=env.time_step_spec(), action_spec=env.action_spec())
+    collect_policy = random_py_policy.RandomPyPolicy(time_step_spec=environment.time_step_spec(), action_spec=environment.action_spec())
     #collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
 
     driver = py_driver.PyDriver(
         environment,
         collect_policy,
         [rb_observer],
+        max_steps=500,
         max_episodes=num_episodes)
 
     initial_time_step = environment.reset()
@@ -75,7 +77,13 @@ def compute_avg_return(environment, policy, num_episodes=10):
             episode_return += time_step.reward
             steps = steps + 1
         total_return += episode_return
-        print('Episode: {0} return: {1:0.2f} steps {2} Duration {3} sec'.format(eps, episode_return.numpy()[0], steps, (datetime.now()-tm_start).seconds))
+        print('Episode: {0} Rewards: {1:0.2f} {2} steps {3} Duration {4} sec'.format(
+            eps,
+            episode_return.numpy()[0],
+            time_step.reward.numpy(),
+            steps,
+            (datetime.now()-tm_start).seconds)
+            )
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
@@ -84,11 +92,11 @@ def compute_avg_return(environment, policy, num_episodes=10):
 #Set CTRL+C handler
 signal.signal(signal.SIGINT, handler)
 
-env = suite_gym.load(env_name)
-env.reset()
-
 train_py_env = suite_gym.load(env_name)
+train_py_env.reset()
+
 eval_py_env = suite_gym.load(env_name)
+eval_py_env.reset()
 
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
@@ -111,8 +119,8 @@ print('Action Spec: {}'.format(train_env.action_spec()))
 # its output.
 input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
 
-nums_lyr_1 = observations*5
-nums_lyr_2 = observations*8
+nums_lyr_1 = observations*10
+nums_lyr_2 = observations*5
 
 layer_1 =  tf.keras.layers.Dense(
     nums_lyr_1,
@@ -122,7 +130,7 @@ layer_1 =  tf.keras.layers.Dense(
         scale=1.0 if nums_lyr_1 <= 10 else 2.0,
         mode='fan_in',
         distribution='truncated_normal'),
-    bias_initializer=tf.keras.initializers.Constant(-0.2)
+    bias_initializer=None #tf.keras.initializers.Constant(-0.2)
     )
 
 layer_2 =  tf.keras.layers.Dense(
@@ -133,7 +141,7 @@ layer_2 =  tf.keras.layers.Dense(
         scale=1.0 if nums_lyr_2 <= 10 else 2.0,
         mode='fan_in',
         distribution='truncated_normal'),
-    bias_initializer=tf.keras.initializers.Constant(-0.2)
+    bias_initializer=None #tf.keras.initializers.Constant(-0.2)
     )
 
 """
@@ -146,7 +154,7 @@ q_values_layer = tf.keras.layers.Dense(
     kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
     bias_initializer=tf.keras.initializers.Constant(-0.2))
 
-q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer])
+q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], input_spec=train_env.time_step_spec().observation, name="QNet")
 
 optimizer = tf.keras.optimizers.Adam() #use lerning rate by default 0.001
 train_step_counter = tf.Variable(0)
@@ -200,8 +208,8 @@ print_summary(q_net)
 
 #exit()
 
-avg_return = 0 #compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-returns = [avg_return]
+avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+returns = [] #[avg_return]
 
 tm_g_start = datetime.now()
 tm_start = datetime.now()
@@ -212,7 +220,6 @@ step = agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), step))
 
 while step < num_iterations:
-
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
     num_frames = replay_buffer.num_frames()
@@ -220,33 +227,45 @@ while step < num_iterations:
 
     counter = 0
 
-    #print("Iterator element spec: {}".format(iterator.element_spec))
     """
-    while iterator and counter <= 10:
+    iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
+    print("Iterator element spec: {}".format(iterator.element_spec))
+
+    while counter <= num_frames:
         trajectories, _ = next(iterator)
-        print(trajectories)
+        #print(trajectories)
         print("{0} Action:{1} Reward:{2} Step type: {3}".format(counter,
                                                             trajectories.action.numpy(),
                                                             trajectories.reward.numpy(),
                                                             trajectories.step_type.numpy()))
         counter = counter + 1
-        break
+        #break
 
-    replay_buffer.clear()
-    print("Frames in reply buffer: {}".format(replay_buffer.num_frames()))
+    #replay_buffer.clear()
+    #print("Frames in reply buffer: {}".format(replay_buffer.num_frames()))
     exit()
     """
 
+    reward_counter = 0.0
+    loss_counter = 0.0
     iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
     while counter < num_frames:
         # Use data from the buffer and update the agent's network.
         trajectories, _ = next(iterator)
-
         train_loss = agent.train(experience=trajectories)
 
+        #print(trajectories)
+        #print(train_loss)
+
+        #exit()
+
+        reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
+        loss_counter = loss_counter + train_loss.loss
         step = agent.train_step_counter.numpy()
+        #print('step = {0}: loss = {1} Reward {2} sec'.format(step, train_loss.loss, trajectories.reward.numpy()))
+
         if step % log_interval == 0:
-            print('step = {0}: loss = {1} Duration {2} sec'.format(step, train_loss.loss, (datetime.now()-tm_start).seconds))
+            print('step = {0}: loss = {1} Reward: {2} Duration {3} sec'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds))
             tm_start = datetime.now()
 
         if step % eval_interval == 0:
@@ -256,13 +275,13 @@ while step < num_iterations:
 
         counter = counter + 1
 
-        if bFinishTrain:
+        if finish_train:
             break
 
     replay_buffer.clear()
-    print("Current step: {}".format(step))
+    print("Current step: {} Reward: {} Loss: {}".format(step, reward_counter, loss_counter))
 
-    if bFinishTrain:
+    if finish_train:
         break
 
 

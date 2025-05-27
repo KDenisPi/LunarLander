@@ -1,0 +1,24 @@
+In the Lunar Lander environment, which is a classic reinforcement learning problem, the agent (the lander) receives a reward at each time step based on its state and actions. 
+Here's a breakdown of the rewards:
+1. Landing Successfully:
+The primary goal is to land the lander safely on the designated landing pad.
+Landing successfully earns a substantial positive reward, typically around +100 to +140 points.
+Coming to rest (landing with zero velocity) adds another positive reward of +100 points. 
+2. Landing Pad Location:
+Moving closer to the landing pad results in positive rewards, encouraging the lander to approach the target.
+Conversely, moving away from the landing pad leads to negative rewards, penalizing the lander for straying off course. 
+3. Velocity:
+Decreasing velocity (slowing down) is rewarded, as a safe landing requires low speed.
+Increasing velocity (speeding up) is penalized, especially when approaching the landing pad. 
+4. Angle/Orientation:
+Maintaining an upright orientation (angle close to horizontal) is rewarded, as this is crucial for a safe landing.
+Tilting or rotating significantly is penalized. 
+5. Leg Contact:
+Each leg making contact with the ground earns a positive reward of +10 points, promoting stable landings. 
+6. Fuel Consumption (Engine Firing):
+Firing the main engine incurs a penalty of -0.3 points per frame, discouraging excessive use.
+Firing the side engines also incurs a penalty of -0.03 points per frame. 
+7. Crashing:
+If the lander crashes, it receives a significant negative reward of -100 points, ending the episode. 
+In summary:
+The Lunar Lander reward function is designed to guide the agent toward a safe and efficient landing by providing both positive and negative rewards based on the lander's state and actions at each time step. The agent learns to maximize its cumulative reward over time, which ultimately leads to the desired behavior. 
