@@ -26,13 +26,13 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 10000 # 2000 @param {type:"integer"}
+num_iterations = 20000 # 2000 @param {type:"integer"}
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 2000 # @param {type:"integer"}
+replay_buffer_capacity = 20000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 2500 # 100 @param {type:"integer"}
-log_interval = 500 # 50 @param {type:"integer"}
+eval_interval = 10000 # 100 @param {type:"integer"}
+log_interval = 10000 # 50 @param {type:"integer"}
 
 finish_train = False
 
@@ -54,7 +54,7 @@ def collect_episode(environment, num_episodes, agent):
         environment,
         collect_policy,
         [rb_observer],
-        max_steps=500,
+        #max_steps=500,
         max_episodes=num_episodes)
 
     initial_time_step = environment.reset()
@@ -119,8 +119,8 @@ print('Action Spec: {}'.format(train_env.action_spec()))
 # its output.
 input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
 
-nums_lyr_1 = observations*10
-nums_lyr_2 = observations*5
+nums_lyr_1 = 120 #observations*10
+nums_lyr_2 = 60 #observations*5
 
 layer_1 =  tf.keras.layers.Dense(
     nums_lyr_1,
@@ -156,7 +156,12 @@ q_values_layer = tf.keras.layers.Dense(
 
 q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], input_spec=train_env.time_step_spec().observation, name="QNet")
 
-optimizer = tf.keras.optimizers.Adam() #use lerning rate by default 0.001
+#
+#Important parameters
+# lerning rate - Adam optimizer parameter (0.001 - 0.0001)
+# the discount factor (γ) of future rewards - gamma (0.9-1.0)
+#
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) #use lerning rate by default 0.001
 train_step_counter = tf.Variable(0)
 
 agent = dqn_agent.DqnAgent(
@@ -164,7 +169,8 @@ agent = dqn_agent.DqnAgent(
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
-        td_errors_loss_fn=None, #common.element_wise_squared_loss,
+        gamma=0.9,
+        td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
 
 agent.initialize()
@@ -209,7 +215,7 @@ print_summary(q_net)
 #exit()
 
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-returns = [] #[avg_return]
+returns = [avg_return]
 
 tm_g_start = datetime.now()
 tm_start = datetime.now()
@@ -223,7 +229,7 @@ while step < num_iterations:
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
     num_frames = replay_buffer.num_frames()
-    print("Frames in reply buffer: {}".format(num_frames))
+    #print("Frames in reply buffer: {}".format(num_frames))
 
     counter = 0
 
@@ -279,7 +285,7 @@ while step < num_iterations:
             break
 
     replay_buffer.clear()
-    print("Current step: {} Reward: {} Loss: {}".format(step, reward_counter, loss_counter))
+    print("Current step: {0} Frames in reply buffer: {1} Reward: {2:0.2f} Loss: {3:0.2f}".format(step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
 
     if finish_train:
         break
