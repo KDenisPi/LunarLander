@@ -26,7 +26,8 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 20000 # 2000 @param {type:"integer"}
+#num_iterations = 20000 # 2000 @param {type:"integer"}
+num_episodes = 5
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 20000 # @param {type:"integer"}
 
@@ -225,7 +226,9 @@ replay_buffer.clear()
 step = agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), step))
 
-while step < num_iterations:
+#while step < num_iterations:
+for _ in range(num_episodes):
+
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
     num_frames = replay_buffer.num_frames()
@@ -271,12 +274,12 @@ while step < num_iterations:
         #print('step = {0}: loss = {1} Reward {2} sec'.format(step, train_loss.loss, trajectories.reward.numpy()))
 
         if step % log_interval == 0:
-            print('step = {0}: loss = {1} Reward: {2} Duration {3} sec'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds))
+            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Duration {3} sec'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds))
             tm_start = datetime.now()
 
         if step % eval_interval == 0:
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-            print('step = {0}: Average Return = {1}'.format(step, avg_return))
+            print('step = {0}: Average Return = {1:0.2f}'.format(step, avg_return))
             returns.append(avg_return)
 
         counter = counter + 1
