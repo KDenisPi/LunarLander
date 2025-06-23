@@ -263,15 +263,9 @@ for _ in range(num_episodes):
         trajectories, _ = next(iterator)
         train_loss = agent.train(experience=trajectories)
 
-        #print(trajectories)
-        #print(train_loss)
-
-        #exit()
-
         reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
         loss_counter = loss_counter + train_loss.loss
         step = agent.train_step_counter.numpy()
-        #print('step = {0}: loss = {1} Reward {2} sec'.format(step, train_loss.loss, trajectories.reward.numpy()))
 
         if step % log_interval == 0:
             print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Duration {3} sec'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds))

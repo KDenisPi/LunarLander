@@ -4,6 +4,8 @@
 import os
 from typing import Any, Optional
 from xmlrpc.client import Boolean
+
+#from sympy import true
 import gym
 import numpy as np
 import tensorflow as tf
@@ -68,8 +70,9 @@ class ModelParams(object):
     s_log_interval = 1000
     s_eval_interval = 2000
     s_batch_size = 2
-    s_debug = True
-    s_debug_data = 'data/'
+    s_debug_print = True
+    s_debug_data_folder = 'data/'
+    s_gen_cvs_file = True
 
     s_layers = "layers"
 
@@ -83,8 +86,13 @@ class ModelParams(object):
             "eval_interval" : ModelParams.s_eval_interval, #1000
             "batch_size" : ModelParams.s_batch_size,
 
-            "debug" : ModelParams.s_debug,
-            "debug_data" : ModelParams.s_debug_data
+            "debug" : ModelParams.s_debug_print,
+            "debug_data" : ModelParams.s_debug_data_folder,
+            "generate_cvs": ModelParams.s_gen_cvs_file,
+
+            #agent parameters
+            "optimizer": 0.001,
+            "gamma": 0.9
         }
 
         self.layers_cfg = [
@@ -100,6 +108,14 @@ class ModelParams(object):
                 "activation": "relu"
             }
         ]
+
+    @property
+    def agent_optimizer(self) -> float:
+        return self.mparams['optimizer']
+
+    @property
+    def agent_gamma(self) -> float:
+        return self.mparams['gamma']
 
     @property
     def replay_buffer_max_length(self) -> int:
@@ -130,6 +146,10 @@ class ModelParams(object):
         return self.mparams['debug']
 
     @property
+    def is_cvs(self) -> Boolean:
+        return self.mparams['generate_cvs']
+
+    @property
     def debug_data(self) -> str:
         return self.mparams['debug_data']
 
@@ -150,35 +170,7 @@ class ModelParams(object):
                 ml_parameters = json.load(fd)
                 print("Loaded {}".format(f_name))
 
-                """Genaral model parameters"""
-                for pkey in self.mparams.keys():
-                    if pkey in ml_parameters:
-                        self.mparams[pkey] = ml_parameters[pkey]
-
-                """Layers configuration"""
-
-                if ModelParams.s_layers not in ml_parameters or len(ml_parameters[ModelParams.s_layers])==0:
-                    print("Invalid/absent layers configuration.")
-                    return False
-
-                self.layers_cfg = ml_parameters[ModelParams.s_layers]
-                for layer in self.layers_cfg:
-                    if "activation" not in layer or layer["activation"] not in ["relu", "gelu"]:
-                        layer["activation"] = "relu"
-
-                    if "bias_initializer" in layer and (layer["bias_initializer"] > 1 or  layer["bias_initializer"] < -1):
-                        print("Error. Invalid layer configuration. Value for bias_initializer should be between (-1,1).")
-                        return False
-
-                    if "layer_params" not in layer:
-                        print("Error. Invalid layer configuration. Value for layer_params is absent.")
-                        return False
-
-                    if "num_units_scale" not in layer:
-                        layer["num_units_scale"] = 1
-                    elif layer["num_units_scale"] <= 0 or layer["num_units_scale"] > 20:
-                        print("Error. Invalid layer configuration. Value for num_units_scale is incorrect.")
-                        return False
+                return self.parse_json(ml_parameters)
 
             except json.JSONDecodeError as jerr:
                 msg = "Error. Could not parse file {} err {} line {}".format(self.f_name, jerr.msg, jerr.lineno)
@@ -194,17 +186,54 @@ class ModelParams(object):
 
         return result
 
+    def parse_json(self, ml_parameters) -> bool:
+        """Genaral model parameters"""
+        for pkey in self.mparams.keys():
+            if pkey in ml_parameters:
+                self.mparams[pkey] = ml_parameters[pkey]
+
+        """Layers configuration"""
+
+        if ModelParams.s_layers not in ml_parameters or len(ml_parameters[ModelParams.s_layers])==0:
+            print("Invalid/absent layers configuration.")
+            return False
+
+        self.layers_cfg = ml_parameters[ModelParams.s_layers]
+        for layer in self.layers_cfg:
+            if "activation" not in layer or layer["activation"] not in ["relu", "gelu"]:
+                layer["activation"] = "relu"
+
+            if "bias_initializer" in layer and (layer["bias_initializer"] > 1 or  layer["bias_initializer"] < -1):
+                print("Error. Invalid layer configuration. Value for bias_initializer should be between (-1,1).")
+                return False
+
+            if "layer_params" not in layer:
+                print("Error. Invalid layer configuration. Value for layer_params is absent.")
+                return False
+
+            if "num_units_scale" not in layer:
+                layer["num_units_scale"] = 1
+            elif layer["num_units_scale"] <= 0 or layer["num_units_scale"] > 20:
+                print("Error. Invalid layer configuration. Value for num_units_scale is incorrect.")
+                return False
+
+        return True
+
+
 
     def to_string(self) -> None:
         """Current configuration"""
         print("replay_buffer_max_length {}\nnum_eval_episodes {}" \
-            "\nnum_iterations {}\nlog_interval {}\neval_interval {}\nbatch_size {}".format(
+            "\nnum_iterations {}\nlog_interval {}\neval_interval {}\nbatch_size {}\ndebug {}\ndebug folder {}\nCVS {}".format(
             self.replay_buffer_max_length,
             self.num_eval_episodes,
             self.num_iterations,
             self.log_interval,
             self.eval_interval,
-            self.batch_size)
+            self.batch_size,
+            self.is_debug,
+            self.debug_data,
+            self.is_cvs)
         )
 
 
@@ -225,15 +254,12 @@ class LunarLander(object):
     def dt() -> str:
         return str(datetime.now())
 
-    def __init__(self, cfg_name: Optional [str] = None, model_name: Optional [str] = None) -> None:
+    def __init__(self, config : ModelParams = None, model_name: Optional [str] = None) -> None:
         """Initialization"""
 
         print("Detected GPU: {tf.config.list_physical_devices('GPU')}")
 
-        self.cfg = ModelParams()
-        if cfg_name:
-            res = self.cfg.load_ml_params(cfg_name)
-            print('Load model parameters: {}'.format(res))
+        self.cfg = config if config else ModelParams()
 
         self.model_name = os.path.join(".", model_name) if model_name else None
         self.checkpoint_dir = self.model_name + '.checkpoint' if self.model_name else None
@@ -315,7 +341,9 @@ class LunarLander(object):
         self.agent.train_step_counter.assign(self.train_step_counter)
 
         avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
-        returns = [avg]
+        ret_steps_avg_training = [(self.train_step_counter, avg)]
+
+        ret_loss_reward = []
 
         if self.is_debug:
             print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
@@ -339,21 +367,30 @@ class LunarLander(object):
             self.collect_steps(self.py_env, 2)#, self.agent)
 
             counter = 0
-            while counter < self.replay_buffer.num_frames():
-                iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
+            reward_counter = 0.0
+            loss_counter = 0.0
+
+            num_frames = self.replay_buffer.num_frames()
+            iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
+
+            while counter < num_frames:
                 trajectories, _ = next(iterator)
                 train_loss = self.agent.train(experience=trajectories).loss
 
+                reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
+                loss_counter = loss_counter + train_loss.loss
                 step = self.agent.train_step_counter.numpy()
 
                 if step % self.cfg.log_interval == 0:
-                    print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
+                    if self.is_debug:
+                        print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
                     tm_start = datetime.now()
 
                 if step % self.cfg.eval_interval == 0:
                     avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
-                    print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
-                    returns.append(avg)
+                    ret_steps_avg_training.append((step, avg))
+                    if self.is_debug:
+                        print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
 
                 counter = counter + 1
 
@@ -361,19 +398,24 @@ class LunarLander(object):
                     print("Finish flag detected")
                     break
 
+            ret_loss_reward.append((step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
             self.replay_buffer.clear()
 
         tm_interval = datetime.now() - tm_global_start
-        print("Finish training at {} Duration: {}".format(LunarLander.dt(), tm_interval))
+
+        headers = ['Step', 'Frames', 'Avg.reward', 'Avg.loss']
+        self.save_info2cvs(self.model_name+"_train", ret_loss_reward, headers, self.agent.train_step_counter.numpy(), 0)
+
 
         if self.is_debug:
+            print("Finish training at {} Duration: {}".format(LunarLander.dt(), tm_interval))
             print_summary(self.q_net)
 
         #save state
         self.save_model(self.agent)
-        return returns
+        return ret_steps_avg_training
 
-    def collect_steps(self, environment, num_episodes, agent = None):
+    def collect_steps(self, environment, num_episodes, agent = None) -> None:
         """Generate polices"""
         collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
             agent.collect_policy, use_tf_function=True) if agent else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
@@ -387,9 +429,10 @@ class LunarLander(object):
         driver.run(initial_time_step)
 
 
-    def compute_avg_return(self, environment, policy, num_episodes=10):
+    def compute_avg_return(self, environment, policy, num_episodes=10) -> float:
         """"""
         print("Start compute average at {}".format(LunarLander.dt()))
+        headers = ['Nm','X','Y','Vx','Vy','Angle','Va','LegL','LegR','StT','Reward','Action','Last']
 
         total_return = 0.0
         for eps in range(num_episodes):
@@ -400,9 +443,8 @@ class LunarLander(object):
             steps = 0
             episod_info = []
 
-            if self.is_debug:
-                step_res = [0] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], 0, 0]
-                episod_info.append(step_res)
+            step_res = [0] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], 0, 0]
+            episod_info.append(step_res)
 
             while not time_step.is_last():
                 action_step = policy.action(time_step)
@@ -410,13 +452,11 @@ class LunarLander(object):
                 episode_return += time_step.reward
                 steps += 1
 
-                if self.is_debug:
-                    step_res = [steps] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], action_step.action.numpy()[0], int(time_step.is_last())]
-                    episod_info.append(step_res)
+                step_res = [steps] + time_step.observation.numpy()[0].tolist() + [time_step.step_type.numpy()[0], time_step.reward.numpy()[0], action_step.action.numpy()[0], int(time_step.is_last())]
+                episod_info.append(step_res)
 
             tm_diff = datetime.now() - tm_start
-            if self.is_debug:
-                self.print_info(episod_info, eps)
+            self.save_info2cvs(self.model_name, episod_info, headers, self.agent.train_step_counter.numpy(), eps)
 
             total_return += episode_return
             print('Episode: {0} return: {1:0.2f} steps {2} Duration {3} sec'.format(eps, episode_return.numpy()[0], steps, tm_diff.seconds))
@@ -426,19 +466,18 @@ class LunarLander(object):
         avg_return = total_return / num_episodes
         return avg_return.numpy()[0]
 
-    def print_info(self, data:list, episode:int) -> bool:
+    def save_info2cvs(self, filename:str, data:list, headers:list, train_step_counter:any, episode:int) -> bool:
         """Print episode information to CSV format"""
-        if not self.is_debug:
+        if not self.cfg.is_cvs:
             return False
 
         if not os.path.exists(self.cfg.debug_data):
-            #print("Folder {} does not exist.".format(self.cfg.debug_data))
+            print("No such directory {}".format(self.cfg.debug_data))
             return False
 
-        headers = ['Nm','X','Y','Vx','Vy','Angle','Va','LegL','LegR','StT','Reward','Action','Last']
         csv_file = '{0}{1}_{2}_{3}.csv'.format(self.cfg.debug_data,
-                                               self.model_name if self.model_name else 'General',
-                                               self.agent.train_step_counter.numpy(),
+                                               filename if filename else 'General',
+                                               train_step_counter,
                                                episode)
         with open(csv_file, "w") as fd_write:
             fd_write.write(",".join(headers)+'\n')
@@ -469,9 +508,6 @@ class LunarLander(object):
             kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
-        #layers = [input_lr] + work_layers + [q_values_layer]
-        #self.q_net = sequential.Sequential(layers=layers, name="LLand")
-
         layers = work_layers + [q_values_layer]
         self.q_net = sequential.Sequential(layers=layers, input_spec=self.tf_env.time_step_spec().observation, name="LLand")
 
@@ -480,7 +516,8 @@ class LunarLander(object):
                 self.tf_env.time_step_spec(),
                 self.tf_env.action_spec(),
                 q_network=self.q_net,
-                optimizer=tf.keras.optimizers.Adam(), #use lerning rate by default 0.001,
+                optimizer=tf.keras.optimizers.Adam(self.cfg.agent_optimizer),
+                gamma=self.cfg.agent_gamma,
                 td_errors_loss_fn=common.element_wise_squared_loss,
                 train_step_counter=self.train_step_counter)
 
@@ -552,7 +589,15 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfgname = sys.argv[1]
 
-    ll = LunarLander(cfg_name=cfgname, model_name=mname)
+    cfg = ModelParams()
+    if cfgname:
+        res = cfg.load_ml_params(cfgname)
+        print('Load model parameters: {} result: {}'.format(cfgname, res))
+
+    #print(cfg.to_string())
+    #exit()
+
+    ll = LunarLander(cfg, model_name=mname)
     ll.prepare()
     res = ll.train_agent()
     print(res)
