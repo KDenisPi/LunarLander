@@ -341,7 +341,7 @@ class LunarLander(object):
         self.agent.train_step_counter.assign(self.train_step_counter)
 
         avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
-        ret_steps_avg_training = [(self.train_step_counter, avg)]
+        ret_steps_avg_training = [(self.train_step_counter.numpy(), avg)]
 
         ret_loss_reward = []
 
@@ -375,7 +375,7 @@ class LunarLander(object):
 
             while counter < num_frames:
                 trajectories, _ = next(iterator)
-                train_loss = self.agent.train(experience=trajectories).loss
+                train_loss = self.agent.train(experience=trajectories)
 
                 reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
                 loss_counter = loss_counter + train_loss.loss
@@ -383,7 +383,7 @@ class LunarLander(object):
 
                 if step % self.cfg.log_interval == 0:
                     if self.is_debug:
-                        print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss, (datetime.now()-tm_start).seconds))
+                        print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss.loss, (datetime.now()-tm_start).seconds))
                     tm_start = datetime.now()
 
                 if step % self.cfg.eval_interval == 0:
@@ -404,7 +404,7 @@ class LunarLander(object):
         tm_interval = datetime.now() - tm_global_start
 
         headers = ['Step', 'Frames', 'Avg.reward', 'Avg.loss']
-        self.save_info2cvs(self.model_name+"_train", ret_loss_reward, headers, self.agent.train_step_counter.numpy(), 0)
+        self.save_info2cvs(self.model_name, ret_loss_reward, headers, self.agent.train_step_counter.numpy(), 0, "_train")
 
 
         if self.is_debug:
@@ -466,7 +466,7 @@ class LunarLander(object):
         avg_return = total_return / num_episodes
         return avg_return.numpy()[0]
 
-    def save_info2cvs(self, filename:str, data:list, headers:list, train_step_counter:any, episode:int) -> bool:
+    def save_info2cvs(self, filename:str, data:list, headers:list, train_step_counter:any, episode:int, ext:str = "") -> bool:
         """Print episode information to CSV format"""
         if not self.cfg.is_cvs:
             return False
@@ -475,10 +475,11 @@ class LunarLander(object):
             print("No such directory {}".format(self.cfg.debug_data))
             return False
 
-        csv_file = '{0}{1}_{2}_{3}.csv'.format(self.cfg.debug_data,
-                                               filename if filename else 'General',
-                                               train_step_counter,
-                                               episode)
+        csv_file = '{0}{1}{2}_{3}_{4}.csv'.format(self.cfg.debug_data,
+                                                filename if filename else 'General',
+                                                ext,
+                                                train_step_counter,
+                                                episode)
         with open(csv_file, "w") as fd_write:
             fd_write.write(",".join(headers)+'\n')
             for ln in data:
