@@ -431,7 +431,8 @@ class LunarLander(object):
 
     def compute_avg_return(self, environment, policy, num_episodes=10) -> float:
         """"""
-        print("Start compute average at {}".format(LunarLander.dt()))
+        if self.is_debug:
+            print("Start compute average at {}".format(LunarLander.dt()))
         headers = ['Nm','X','Y','Vx','Vy','Angle','Va','LegL','LegR','StT','Reward','Action','Last']
 
         total_return = 0.0
@@ -456,12 +457,16 @@ class LunarLander(object):
                 episod_info.append(step_res)
 
             tm_diff = datetime.now() - tm_start
-            self.save_info2cvs(self.model_name, episod_info, headers, self.agent.train_step_counter.numpy(), eps)
+            if self.is_debug: #do not generate separate file for each average by default
+                self.save_info2cvs(self.model_name, episod_info, headers, self.agent.train_step_counter.numpy(), eps)
 
             total_return += episode_return
-            print('Episode: {0} return: {1:0.2f} steps {2} Duration {3} sec'.format(eps, episode_return.numpy()[0], steps, tm_diff.seconds))
 
-        print("Finished compute average at {}".format(LunarLander.dt()))
+            if self.is_debug:
+                print('Episode: {0} return: {1:0.2f} steps {2} Duration {3} sec'.format(eps, episode_return.numpy()[0], steps, tm_diff.seconds))
+
+        if self.is_debug:
+            print("Finished compute average at {}".format(LunarLander.dt()))
 
         avg_return = total_return / num_episodes
         return avg_return.numpy()[0]
