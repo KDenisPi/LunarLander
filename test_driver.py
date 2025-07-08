@@ -51,15 +51,19 @@ def collect_episode(environment, num_episodes, agent):
     collect_policy = random_py_policy.RandomPyPolicy(time_step_spec=environment.time_step_spec(), action_spec=environment.action_spec())
     #collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
 
+    initial_time_step = environment.reset()
+    print("First step: first {} last {}".format(initial_time_step.is_first(), initial_time_step.is_last()))
+
     driver = py_driver.PyDriver(
-        environment,
-        collect_policy,
-        [rb_observer],
-        #max_steps=500,
+        env=environment,
+        policy=collect_policy,
+        observers=[rb_observer],
+        end_episode_on_boundary=True,
+        #max_steps=0,
         max_episodes=num_episodes)
 
-    initial_time_step = environment.reset()
-    driver.run(initial_time_step)
+    last_time_step, policy_state = driver.run(initial_time_step)
+    print("Last step: first {} last {}".format(last_time_step.is_first(), last_time_step.is_last()))
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
@@ -215,7 +219,7 @@ print_summary(q_net)
 
 #exit()
 
-avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+avg_return = 0 #compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
 
 tm_g_start = datetime.now()
@@ -232,7 +236,7 @@ for _ in range(num_episodes):
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
     num_frames = replay_buffer.num_frames()
-    #print("Frames in reply buffer: {}".format(num_frames))
+    print("Frames in reply buffer: {}".format(num_frames))
 
     counter = 0
 
@@ -257,10 +261,37 @@ for _ in range(num_episodes):
 
     reward_counter = 0.0
     loss_counter = 0.0
+
+    episodes_trj = 0
+    boundary_trj = 0
+
     iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
     while counter < num_frames:
         # Use data from the buffer and update the agent's network.
         trajectories, _ = next(iterator)
+
+        counter = counter + 1
+        """
+        print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7}".format(
+                                                        trajectories.action.numpy(),
+                                                        trajectories.reward.numpy(),
+                                                        trajectories.step_type.numpy(),
+                                                        trajectories.next_step_type.numpy(),
+                                                        trajectories.discount.numpy(),
+                                                        trajectories.is_last().numpy(),
+                                                        trajectories.is_boundary().numpy(),
+                                                        np.sum(trajectories.is_boundary())))
+        """
+        #print(trajectories)
+
+        if np.sum(trajectories.is_last()):
+            episodes_trj = episodes_trj + 1
+            print("----> End of Episode step: {}".format(counter))
+        if np.sum(trajectories.is_boundary()):
+            boundary_trj = boundary_trj + 1
+            print("----> End of Boundary step: {}".format(counter))
+        continue
+
         train_loss = agent.train(experience=trajectories)
 
         reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
@@ -280,6 +311,9 @@ for _ in range(num_episodes):
 
         if finish_train:
             break
+
+    print("Episodes: {} Boundary: {}".format(episodes_trj, boundary_trj))
+    exit()
 
     replay_buffer.clear()
     print("Current step: {0} Frames in reply buffer: {1} Reward: {2:0.2f} Loss: {3:0.2f}".format(step, num_frames, reward_counter/num_frames, loss_counter/num_frames))

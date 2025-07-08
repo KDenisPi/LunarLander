@@ -339,25 +339,25 @@ class LunarLander(object):
             print_summary(self.q_net)
 
         self.agent.train_step_counter.assign(self.train_step_counter)
+        step = self.agent.train_step_counter.numpy()
 
         avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes)
-        ret_steps_avg_training = [(self.train_step_counter.numpy(), avg)]
+        ret_steps_avg_training = [(step, avg)]
 
         ret_loss_reward = []
 
         if self.is_debug:
-            print('step = {0}: Average Return = {1:0.2f}'.format(self.train_step_counter.numpy(), avg))
+            print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
 
         #Set CTRL+C handler
         signal.signal(signal.SIGINT, LunarLander.handler)
 
-        step = self.agent.train_step_counter.numpy()
         tm_start = datetime.now()
         self.replay_buffer.clear()
+        episode = 0
 
         print("Start training at {} From {} to {}".format(LunarLander.dt(), step, self.cfg.num_iterations))
-
-        while step < self.cfg.num_iterations:  #really there is num of steps
+        while episode < self.cfg.num_iterations:  #really there is num of episodes
 
             if LunarLander.bFinishTrain:
                 print("Finish flag detected")
@@ -366,15 +366,14 @@ class LunarLander(object):
             # Collect a few steps and save to the replay buffer.
             self.collect_steps(self.py_env, 2)#, self.agent)
 
-            counter = 0
+            #counter = 0
             reward_counter = 0.0
             loss_counter = 0.0
+            num_frames = 0 #self.replay_buffer.num_frames()
 
-            num_frames = self.replay_buffer.num_frames()
             iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
-
-            while counter < num_frames:
-                trajectories, _ = next(iterator)
+            trajectories, _ = next(iterator)
+            while not np.sum(trajectories.is_boundary()):
                 train_loss = self.agent.train(experience=trajectories)
 
                 reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
@@ -383,28 +382,38 @@ class LunarLander(object):
 
                 if step % self.cfg.log_interval == 0:
                     if self.is_debug:
-                        print('step = {0}: loss = {1:0.2f} Duration {2} sec'.format(step, train_loss.loss, (datetime.now()-tm_start).seconds))
+                        print('episode: {0} step = {1}: loss = {2:0.2f} Duration {3} sec'.format(
+                            episode, step, train_loss.loss, (datetime.now()-tm_start).seconds))
                     tm_start = datetime.now()
 
                 if step % self.cfg.eval_interval == 0:
                     avg = self.compute_avg_return(self.tf_env_eval, self.agent.policy, self.cfg.num_eval_episodes) #self.agent.policy,
                     ret_steps_avg_training.append((step, avg))
                     if self.is_debug:
-                        print('step = {0}: Average Return = {1:0.2f}'.format(step, avg))
+                        print('step = {0}: Average Return = {1:0.2f} Episode: {2}'.format(step, avg, episode))
 
-                counter = counter + 1
+                #counter = counter + 1
+                num_frames = num_frames + 1
+                trajectories, _ = next(iterator)
 
                 if LunarLander.bFinishTrain:
                     print("Finish flag detected")
                     break
 
-            ret_loss_reward.append((step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
+            if num_frames > 0:
+                ret_loss_reward.append((step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
+            else:
+                if self.is_debug:
+                    print("Episide: {} Num frames is zero. Frames in buffer {}".format(episode, self.replay_buffer.num_frames()))
+
+
             self.replay_buffer.clear()
+            episode = episode + 1
 
         tm_interval = datetime.now() - tm_global_start
 
         headers = ['Step', 'Frames', 'Avg.reward', 'Avg.loss']
-        self.save_info2cvs(self.model_name, ret_loss_reward, headers, self.agent.train_step_counter.numpy(), 0, "_train")
+        self.save_info2cvs(self.model_name, ret_loss_reward, headers, step, 0, "_train")
 
 
         if self.is_debug:
