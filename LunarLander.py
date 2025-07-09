@@ -336,7 +336,7 @@ class LunarLander(object):
 
         if self.is_debug:
             print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
-            
+
         print_summary(self.q_net)
 
         self.agent.train_step_counter.assign(self.train_step_counter)
@@ -395,6 +395,7 @@ class LunarLander(object):
 
                 #counter = counter + 1
                 num_frames = num_frames + 1
+
                 if LunarLander.bFinishTrain:
                     print("Finish flag detected")
                     break
@@ -405,7 +406,7 @@ class LunarLander(object):
                 trajectories, _ = next(iterator)
 
             if num_frames > 0:
-                ret_loss_reward.append((step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
+                ret_loss_reward.append((episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
                 print('Episode = {0}: Avg Rwd = {1:0.2f} Avg Loss: {2:0.2f}'.format(episode, reward_counter/num_frames, loss_counter/num_frames))
             else:
                 if self.is_debug:
@@ -417,7 +418,7 @@ class LunarLander(object):
 
         tm_interval = datetime.now() - tm_global_start
 
-        headers = ['Step', 'Frames', 'Avg.reward', 'Avg.loss']
+        headers = ['Episode', 'Step', 'Frames', 'Avg.reward', 'Avg.loss']
         self.save_info2cvs(self.model_name, ret_loss_reward, headers, step, 0, "_train")
 
 
