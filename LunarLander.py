@@ -336,7 +336,8 @@ class LunarLander(object):
 
         if self.is_debug:
             print("Counters before. Agent: {} Saved: {}".format(self.agent.train_step_counter, self.train_step_counter))
-            print_summary(self.q_net)
+            
+        print_summary(self.q_net)
 
         self.agent.train_step_counter.assign(self.train_step_counter)
         step = self.agent.train_step_counter.numpy()
@@ -373,7 +374,7 @@ class LunarLander(object):
 
             iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=1))
             trajectories, _ = next(iterator)
-            while not np.sum(trajectories.is_boundary()):
+            while True: #not np.sum(trajectories.is_boundary()):
                 train_loss = self.agent.train(experience=trajectories)
 
                 reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
@@ -394,14 +395,18 @@ class LunarLander(object):
 
                 #counter = counter + 1
                 num_frames = num_frames + 1
-                trajectories, _ = next(iterator)
-
                 if LunarLander.bFinishTrain:
                     print("Finish flag detected")
                     break
 
+                if np.sum(trajectories.is_boundary()):
+                    break
+
+                trajectories, _ = next(iterator)
+
             if num_frames > 0:
                 ret_loss_reward.append((step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
+                print('Episode = {0}: Avg Rwd = {1:0.2f} Avg Loss: {2:0.2f}'.format(episode, reward_counter/num_frames, loss_counter/num_frames))
             else:
                 if self.is_debug:
                     print("Episide: {} Num frames is zero. Frames in buffer {}".format(episode, self.replay_buffer.num_frames()))
@@ -510,7 +515,7 @@ class LunarLander(object):
         # QNetwork consists of a sequence of Dense layers followed by a dense layer
         # with `num_actions` units to generate one q_value per available action as
         # its output.
-        #input_lr = tf.keras.layers.Dense(self.observations, activation=None, name="Input")
+        input_lr = tf.keras.layers.Dense(self.observations, activation=None, name="Input")
         work_layers = [self.gen_layer(lyer_prm) for lyer_prm in self.cfg.layers]
 
         """
@@ -523,7 +528,7 @@ class LunarLander(object):
             kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
             bias_initializer=tf.keras.initializers.Constant(-0.2))
 
-        layers = work_layers + [q_values_layer]
+        layers = [input_lr] + work_layers + [q_values_layer]
         self.q_net = sequential.Sequential(layers=layers, input_spec=self.tf_env.time_step_spec().observation, name="LLand")
 
         self.train_step_counter = tf.Variable(0)
