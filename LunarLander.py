@@ -92,7 +92,8 @@ class ModelParams(object):
 
             #agent parameters
             "optimizer": 0.001,
-            "gamma": 0.9
+            "gamma": 0.9,
+            "epsilon": 0.995
         }
 
         self.layers_cfg = [
@@ -116,6 +117,10 @@ class ModelParams(object):
     @property
     def agent_gamma(self) -> float:
         return self.mparams['gamma']
+
+    @property
+    def agent_epsilon(self) -> float:
+        return self.mparams['epsilon']
 
     @property
     def replay_buffer_max_length(self) -> int:
@@ -224,7 +229,8 @@ class ModelParams(object):
     def to_string(self) -> None:
         """Current configuration"""
         print("replay_buffer_max_length {}\nnum_eval_episodes {}" \
-            "\nnum_iterations {}\nlog_interval {}\neval_interval {}\nbatch_size {}\ndebug {}\ndebug folder {}\nCVS {}".format(
+            "\nnum_iterations {}\nlog_interval {}\neval_interval {}" \
+            "\nbatch_size {}\ndebug {}\ndebug folder {}\nCVS {}\noptimizer {}\ngamma {} \nepsilon {}".format(
             self.replay_buffer_max_length,
             self.num_eval_episodes,
             self.num_iterations,
@@ -233,7 +239,10 @@ class ModelParams(object):
             self.batch_size,
             self.is_debug,
             self.debug_data,
-            self.is_cvs)
+            self.is_cvs,
+            self.agent_optimizer,
+            self.agent_gamma,
+            self.agent_epsilon)
         )
 
 
@@ -539,6 +548,7 @@ class LunarLander(object):
                 q_network=self.q_net,
                 optimizer=tf.keras.optimizers.Adam(self.cfg.agent_optimizer),
                 gamma=self.cfg.agent_gamma,
+                epsilon_greedy=0.995,
                 td_errors_loss_fn=common.element_wise_squared_loss,
                 train_step_counter=self.train_step_counter)
 
