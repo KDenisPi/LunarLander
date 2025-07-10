@@ -548,7 +548,7 @@ class LunarLander(object):
                 q_network=self.q_net,
                 optimizer=tf.keras.optimizers.Adam(self.cfg.agent_optimizer),
                 gamma=self.cfg.agent_gamma,
-                epsilon_greedy=0.995,
+                #epsilon_greedy=0.995,
                 td_errors_loss_fn=common.element_wise_squared_loss,
                 train_step_counter=self.train_step_counter)
 
@@ -576,7 +576,7 @@ class LunarLander(object):
             activation=tf.keras.activations.gelu if layer_info["activation"] == 'gelu' else tf.keras.activations.relu,
             name=l_name,
             kernel_initializer=tf.keras.initializers.VarianceScaling(
-                scale=1.0 if num_units <= 10 else 2.0,
+                scale=1.0, #if num_units <= 10 else 2.0,
                 mode='fan_in',
                 distribution='truncated_normal'),
             bias_initializer=None if "bias_initializer" not in layer_info else tf.keras.initializers.Constant(layer_info["bias_initializer"])
