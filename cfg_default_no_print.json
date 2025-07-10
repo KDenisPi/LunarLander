@@ -10,17 +10,17 @@
 
     "optimizer": 0.001,
     "gamma": 0.99,
-    "epsilon": 0.995,
+    "epsilon": 0.1,
 
     "layers": [
         {
             "num_units_scale": 1,
-            "layer_params": 512,
+            "layer_params": 256,
             "activation": "relu"
         },
         {
             "num_units_scale": 1,
-            "layer_params": 256,
+            "layer_params": 128,
             "activation": "relu"
         }
     ]
