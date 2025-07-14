@@ -48,8 +48,10 @@ def handler(signum, frame):
 def collect_episode(environment, num_episodes, agent):
     """Collect data for episode"""
     #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
-    collect_policy = random_py_policy.RandomPyPolicy(time_step_spec=environment.time_step_spec(), action_spec=environment.action_spec())
-    #collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
+
+    collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
+        agent.collect_policy, use_tf_function=True) if agent else random_py_policy.RandomPyPolicy(environment.time_step_spec(),
+                                                                                                  environment.action_spec())
 
     initial_time_step = environment.reset()
     print("First step: first {} last {}".format(initial_time_step.is_first(), initial_time_step.is_last()))
@@ -132,7 +134,7 @@ layer_1 =  tf.keras.layers.Dense(
     activation=tf.keras.activations.relu,
     name="LYR_1",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0 if nums_lyr_1 <= 10 else 2.0,
+        scale=1.0, #if nums_lyr_1 <= 10 else 2.0,
         mode='fan_in',
         distribution='truncated_normal'),
     bias_initializer=None #tf.keras.initializers.Constant(-0.2)
@@ -143,7 +145,7 @@ layer_2 =  tf.keras.layers.Dense(
     activation=tf.keras.activations.relu,
     name="LYR_2",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0 if nums_lyr_2 <= 10 else 2.0,
+        scale=1.0, #if nums_lyr_2 <= 10 else 2.0,
         mode='fan_in',
         distribution='truncated_normal'),
     bias_initializer=None #tf.keras.initializers.Constant(-0.2)
@@ -174,7 +176,8 @@ agent = dqn_agent.DqnAgent(
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
-        gamma=0.9,
+        gamma=0.99,
+        epsilon_greedy=0.1,
         td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
 
@@ -286,17 +289,20 @@ for _ in range(num_episodes):
 
         if np.sum(trajectories.is_last()):
             episodes_trj = episodes_trj + 1
-            print("----> End of Episode step: {}".format(counter))
+            #print("----> End of Episode step: {}".format(counter))
         if np.sum(trajectories.is_boundary()):
             boundary_trj = boundary_trj + 1
-            print("----> End of Boundary step: {}".format(counter))
-        continue
+            #print("----> End of Boundary step: {}".format(counter))
+        #continue
 
         train_loss = agent.train(experience=trajectories)
 
         reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
         loss_counter = loss_counter + train_loss.loss
         step = agent.train_step_counter.numpy()
+        print("Step: {} Loss: {} Reward: {}".format(step, train_loss.loss, np.sum(trajectories.reward.numpy()))
+        continue
+
 
         if step % log_interval == 0:
             print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Duration {3} sec'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds))
