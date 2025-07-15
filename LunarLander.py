@@ -374,7 +374,7 @@ class LunarLander(object):
                 break
 
             # Collect a few steps and save to the replay buffer.
-            self.collect_steps(self.py_env, 2)#, self.agent)
+            self.collect_steps(self.py_env, 2, self.agent)
 
             #counter = 0
             reward_counter = 0.0
@@ -439,7 +439,7 @@ class LunarLander(object):
         self.save_model(self.agent)
         return ret_steps_avg_training
 
-    def collect_steps(self, environment, num_episodes, agent = None) -> None:
+    def collect_steps(self, environment, num_episodes, agent:Any = None) -> None:
         """Generate polices"""
         collect_policy = py_tf_eager_policy.PyTFEagerPolicy(
             agent.collect_policy, use_tf_function=True) if agent else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
