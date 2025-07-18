@@ -27,7 +27,7 @@ from tf_agents.networks.layer_utils import print_summary
 
 env_name = "LunarLander-v2" # @param {type:"string"}
 #num_iterations = 20000 # 2000 @param {type:"integer"}
-episodes_for_training = 300
+episodes_for_training = 4000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 20000 # @param {type:"integer"}
 
@@ -35,8 +35,8 @@ num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 200000 # 100 @param {type:"integer"}
 log_interval = 50000 # 50 @param {type:"integer"}
 
-trace = True
-trace_fld = '/app/logs' if trace else ''
+trace = False
+trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
 
 finish_train = False
 
@@ -323,7 +323,7 @@ for episode in range(episodes_for_training):
 
         reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
         loss_counter = loss_counter + train_loss.loss
-        print("Episode {0} Step: {1} Loss: {2:0.2f} Reward: {3:0.2f}".format(episode, step, train_loss.loss, np.sum(trajectories.reward.numpy())))
+        #print("Episode {0} Step: {1} Loss: {2:0.2f} Reward: {3:0.2f}".format(episode, step, train_loss.loss, np.sum(trajectories.reward.numpy())))
 
 
         if np.sum(trajectories.reward.numpy()) > 10000:
@@ -383,7 +383,8 @@ for episode in range(episodes_for_training):
     if finish_train:
         break
 
-tf.profiler.experimental.stop()
+if trace:
+    tf.profiler.experimental.stop()
 
 print("Training finished..... {}".format(datetime.now() - tm_g_start))
 print(returns)
