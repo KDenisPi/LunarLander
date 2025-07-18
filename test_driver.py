@@ -27,13 +27,16 @@ from tf_agents.networks.layer_utils import print_summary
 
 env_name = "LunarLander-v2" # @param {type:"string"}
 #num_iterations = 20000 # 2000 @param {type:"integer"}
-episodes_for_training = 3000
+episodes_for_training = 300
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 20000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 200000 # 100 @param {type:"integer"}
 log_interval = 50000 # 50 @param {type:"integer"}
+
+trace = True
+trace_fld = '/app/logs' if trace else ''
 
 finish_train = False
 
@@ -237,6 +240,16 @@ print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), s
 
 loss_overflow = False
 
+if trace:
+    pr_options = tf.profiler.experimental.ProfilerOptions(
+        host_tracer_level=3,
+        python_tracer_level=1,
+        device_tracer_level=1,
+        delay_ms=None
+    )
+
+    tf.profiler.experimental.start(trace_fld, options=pr_options)
+
 #while step < num_iterations:
 for episode in range(episodes_for_training):
 
@@ -299,12 +312,18 @@ for episode in range(episodes_for_training):
             #print("----> End of Boundary step: {}".format(counter))
         #continue
 
-        train_loss = agent.train(experience=trajectories)
+        step = agent.train_step_counter.numpy()
+
+        if trace:
+            with tf.profiler.experimental.Trace("Train", step_num=step):
+                train_loss = agent.train(experience=trajectories)
+        else:
+            train_loss = agent.train(experience=trajectories)
+
 
         reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
         loss_counter = loss_counter + train_loss.loss
-        step = agent.train_step_counter.numpy()
-        #print("Step: {0} Loss: {1:0.2f} Reward: {2:0.2f}".format(step, train_loss.loss, np.sum(trajectories.reward.numpy())))
+        print("Episode {0} Step: {1} Loss: {2:0.2f} Reward: {3:0.2f}".format(episode, step, train_loss.loss, np.sum(trajectories.reward.numpy())))
 
 
         if np.sum(trajectories.reward.numpy()) > 10000:
@@ -358,12 +377,13 @@ for episode in range(episodes_for_training):
 
     replay_buffer.clear()
     #print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Reward: {3:0.2f} Loss: {4:0.2f}".format(episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
-    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Used: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7}".format(episode, 
+    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Used: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7}".format(episode,
                                                                         step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj))
 
     if finish_train:
         break
 
+tf.profiler.experimental.stop()
 
 print("Training finished..... {}".format(datetime.now() - tm_g_start))
 print(returns)
