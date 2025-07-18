@@ -27,13 +27,13 @@ from tf_agents.networks.layer_utils import print_summary
 
 env_name = "LunarLander-v2" # @param {type:"string"}
 #num_iterations = 20000 # 2000 @param {type:"integer"}
-episodes_for_training = 500
+episodes_for_training = 3000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 20000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 25000 # 100 @param {type:"integer"}
-log_interval = 15000 # 50 @param {type:"integer"}
+eval_interval = 200000 # 100 @param {type:"integer"}
+log_interval = 50000 # 50 @param {type:"integer"}
 
 finish_train = False
 
@@ -69,7 +69,7 @@ def collect_episode(environment, num_episodes, agent):
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
-    print("Started compute_avg_return")
+    #print("Started compute_avg_return")
 
     total_return = 0.0
     for eps in range(num_episodes):
@@ -84,6 +84,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
             episode_return += time_step.reward
             steps = steps + 1
         total_return += episode_return
+        """
         print('Episode: {0} Rewards: {1:0.2f} {2} steps {3} Duration {4} sec'.format(
             eps,
             episode_return.numpy()[0],
@@ -91,6 +92,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
             steps,
             (datetime.now()-tm_start).seconds)
             )
+        """
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
@@ -222,7 +224,7 @@ print_summary(q_net)
 
 #exit()
 
-avg_return = 0 #compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
 
 tm_g_start = datetime.now()
@@ -336,14 +338,14 @@ for episode in range(episodes_for_training):
 
         trajectories, _ = next(iterator)
 
-        continue
+        #continue
 
         if step % eval_interval == 0:
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
             print('step = {0}: Average Return = {1:0.2f}'.format(step, avg_return))
             returns.append(avg_return)
 
-        counter = counter + 1
+        #counter = counter + 1
 
         if finish_train:
             break
