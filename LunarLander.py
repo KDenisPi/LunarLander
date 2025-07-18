@@ -412,6 +412,10 @@ class LunarLander(object):
                 if np.sum(trajectories.is_boundary()):
                     break
 
+                if num_frames >= self.replay_buffer.num_frames():
+                    #print("Break by last frame. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4}".format(episode, step, num_frames, episodes_trj, boundary_trj))
+                    break                
+
                 trajectories, _ = next(iterator)
 
             if num_frames > 0:
