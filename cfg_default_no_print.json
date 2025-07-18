@@ -8,7 +8,7 @@
     "debug": false,
     "generate_cvs": true,
 
-    "optimizer": 0.001,
+    "optimizer": 0.0001,
     "gamma": 0.99,
     "epsilon": 0.1,
 

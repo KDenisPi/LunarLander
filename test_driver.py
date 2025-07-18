@@ -35,6 +35,13 @@ num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 200000 # 100 @param {type:"integer"}
 log_interval = 50000 # 50 @param {type:"integer"}
 
+layer_sz = [256, 128]
+bias = [None, None]  #tf.keras.initializers.Constant(-0.2)
+lrn_rate=0.0001
+gamma=0.99
+epsilon=0.1
+
+
 trace = False
 trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
 
@@ -131,29 +138,26 @@ print('Action Spec: {}'.format(train_env.action_spec()))
 # its output.
 input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
 
-nums_lyr_1 = 256 #observations*10
-nums_lyr_2 = 128 #observations*5
-
 layer_1 =  tf.keras.layers.Dense(
-    nums_lyr_1,
+    layer_sz[0],
     activation=tf.keras.activations.relu,
     name="LYR_1",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0, #if nums_lyr_1 <= 10 else 2.0,
+        scale=1.0,
         mode='fan_in',
         distribution='truncated_normal'),
-    bias_initializer=None #tf.keras.initializers.Constant(-0.2)
+    bias_initializer=bias[0]
     )
 
 layer_2 =  tf.keras.layers.Dense(
-    nums_lyr_2,
+    layer_sz[1],
     activation=tf.keras.activations.relu,
     name="LYR_2",
     kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0, #if nums_lyr_2 <= 10 else 2.0,
+        scale=1.0,
         mode='fan_in',
         distribution='truncated_normal'),
-    bias_initializer=None #tf.keras.initializers.Constant(-0.2)
+    bias_initializer=bias[1]
     )
 
 """
@@ -173,7 +177,7 @@ q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], inpu
 # lerning rate - Adam optimizer parameter (0.001 - 0.0001)
 # the discount factor (γ) of future rewards - gamma (0.9-1.0)
 #
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) #use lerning rate by default 0.001
+optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate) #use lerning rate by default 0.001
 train_step_counter = tf.Variable(0)
 
 agent = dqn_agent.DqnAgent(
@@ -181,8 +185,8 @@ agent = dqn_agent.DqnAgent(
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
-        gamma=0.99,
-        epsilon_greedy=0.1,
+        gamma=gamma,
+        epsilon_greedy=epsilon,
         td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
 
