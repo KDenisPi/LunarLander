@@ -26,10 +26,9 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-#num_iterations = 20000 # 2000 @param {type:"integer"}
 episodes_for_training = 4000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 20000 # @param {type:"integer"}
+replay_buffer_capacity = 2000000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 200000 # 100 @param {type:"integer"}
@@ -254,15 +253,24 @@ if trace:
 
     tf.profiler.experimental.start(trace_fld, options=pr_options)
 
-#while step < num_iterations:
-for episode in range(episodes_for_training):
+
+iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))  #sample_batch_size - TODO
+
+episode = 0
+counter = 0
+
+while episode < episodes_for_training:
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
     num_frames = replay_buffer.num_frames()
-    #print("Frames in reply buffer: {}".format(num_frames))
+    #print("Episode: {} Frames in reply buffer: {}".format(episode, num_frames))
 
-    counter = 0
+    episode = episode + 1
+
+    if num_frames == 0:
+        break
+
 
     """
     iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
@@ -288,11 +296,9 @@ for episode in range(episodes_for_training):
 
     episodes_trj = 0
     boundary_trj = 0
-
-    iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
-    trajectories, _ = next(iterator)
-    while True: #counter < num_frames:
+    while counter < num_frames:
         # Use data from the buffer and update the agent's network.
+        trajectories, _ = next(iterator)
 
         counter = counter + 1
         """
@@ -347,28 +353,31 @@ for episode in range(episodes_for_training):
 
 
         if step % log_interval == 0:
-            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Duration {3} sec Episode: {4}'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds, episode))
+            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Duration {3} sec Episode: {4}'.format(
+                step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds, episode))
             tm_start = datetime.now()
 
 
-        if np.sum(trajectories.is_boundary()):
-            #print("Break by boundary. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4}".format(episode, step, num_frames, episodes_trj, boundary_trj))
-            break
+        #if np.sum(trajectories.is_boundary()):
+        #    print("Break by boundary. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4} Counter: {5}".format(
+        #        episode, step, num_frames, episodes_trj, boundary_trj, counter))
+        #    break
 
-        if counter >= num_frames:
-            #print("Break by last frame. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4}".format(episode, step, num_frames, episodes_trj, boundary_trj))
-            break
+        #if np.sum(trajectories.is_last()):
+        #    print("Break by last. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4} Counter: {5}".format(
+        #        episode, step, num_frames, episodes_trj, boundary_trj, counter))
+        #    break
 
-        trajectories, _ = next(iterator)
 
-        #continue
+        #if counter > num_frames:
+        #    print("Break by last frame. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4} Counter:{5}".format(
+        #        episode, step, num_frames, episodes_trj, boundary_trj, counter))
+        #    break
 
         if step % eval_interval == 0:
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
             print('step = {0}: Average Return = {1:0.2f}'.format(step, avg_return))
             returns.append(avg_return)
-
-        #counter = counter + 1
 
         if finish_train:
             break
@@ -379,10 +388,11 @@ for episode in range(episodes_for_training):
     #print("Episodes: {} Boundary: {}".format(episodes_trj, boundary_trj))
     #exit()
 
-    replay_buffer.clear()
-    #print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Reward: {3:0.2f} Loss: {4:0.2f}".format(episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
-    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Used: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7}".format(episode,
-                                                                        step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj))
+    #print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Reward: {3:0.2f} Loss: {4:0.2f}".format(
+    # episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
+
+    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7}".format(
+        episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj))
 
     if finish_train:
         break
