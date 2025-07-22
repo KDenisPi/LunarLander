@@ -66,13 +66,15 @@ class ModelParams(object):
 
     s_replay_buffer_max_length = 40000
     s_num_eval_episodes = 10
-    s_num_iterations = 20000
-    s_log_interval = 1000
-    s_eval_interval = 2000
+    s_num_iterations = 3000
+    s_log_interval = 15000
+    s_eval_interval = 20000
     s_batch_size = 2
     s_debug_print = True
     s_debug_data_folder = 'data/'
     s_gen_cvs_file = True
+
+    s_save_each_episode = 0 #It does not work stable not. So, let's save result each xxx episodes
 
     s_layers = "layers"
 
@@ -89,6 +91,8 @@ class ModelParams(object):
             "debug" : ModelParams.s_debug_print,
             "debug_data" : ModelParams.s_debug_data_folder,
             "generate_cvs": ModelParams.s_gen_cvs_file,
+
+            "save_each_episode" : ModelParams.s_save_each_episode,
 
             #agent parameters
             "optimizer": 0.001,
@@ -121,6 +125,10 @@ class ModelParams(object):
     @property
     def agent_epsilon(self) -> float:
         return self.mparams['epsilon']
+
+    @property
+    def save_each_episode(self) -> int:
+        return self.mparams['save_each_episode']
 
     @property
     def replay_buffer_max_length(self) -> int:
@@ -306,7 +314,7 @@ class LunarLander(object):
     def is_debug(self) -> bool:
         return self.cfg.is_debug
 
-    def save_model(self, agent):
+    def save_model(self, agent:Any = None) -> None:
         """Save trained weights"""
         if not self.mname:
             return
@@ -315,8 +323,10 @@ class LunarLander(object):
         self.train_checkpointer.save(global_step=self.train_step_counter)
 
     def load_model(self, agent) -> None:
+        """Load saved parameters"""
         if not self.mname:
             return
+
         """Load previosly saved weights"""
         print("Loading checkpoint from: {} Step: {}".format(self.checkpoint_dir, self.train_step_counter))
         self.train_checkpointer = common.Checkpointer(
@@ -414,7 +424,7 @@ class LunarLander(object):
 
                 if num_frames >= self.replay_buffer.num_frames():
                     #print("Break by last frame. Episode: {0} Current step: {1} Frames: in reply buffer: {2} Last:{3} Bnd:{4}".format(episode, step, num_frames, episodes_trj, boundary_trj))
-                    break                
+                    break
 
                 trajectories, _ = next(iterator)
 
@@ -429,6 +439,12 @@ class LunarLander(object):
             self.replay_buffer.clear()
             episode = episode + 1
 
+            if self.cfg.save_each_episode > 0 and episode % self.cfg.save_each_episode == 0:
+                print("Saving checkpoint to: {} Episode: {} Step: {}".format(self.checkpoint_dir, episode, self.train_step_counter))
+                self.save_model()
+                """Just in case"""
+                print(ret_steps_avg_training)
+
         tm_interval = datetime.now() - tm_global_start
 
         headers = ['Episode', 'Step', 'Frames', 'Avg.reward', 'Avg.loss']
@@ -440,7 +456,9 @@ class LunarLander(object):
             print_summary(self.q_net)
 
         #save state
-        self.save_model(self.agent)
+        print("Saving checkpoint to: {} Episode: {} Step: {}".format(self.checkpoint_dir, episode, self.train_step_counter))
+        self.save_model()
+
         return ret_steps_avg_training
 
     def collect_steps(self, environment, num_episodes, agent:Any = None) -> None:
