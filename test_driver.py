@@ -31,7 +31,7 @@ collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 200000 # 100 @param {type:"integer"}
+eval_interval = 150000 # 100 @param {type:"integer"}
 log_interval = 50000 # 50 @param {type:"integer"}
 
 layer_sz = [256, 128]
@@ -257,8 +257,6 @@ if trace:
 iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))  #sample_batch_size - TODO
 
 episode = 0
-counter = 0
-
 while episode < episodes_for_training:
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
@@ -296,7 +294,9 @@ while episode < episodes_for_training:
 
     episodes_trj = 0
     boundary_trj = 0
-    while counter < num_frames:
+
+    counter = 0
+    while step < num_frames:
         # Use data from the buffer and update the agent's network.
         trajectories, _ = next(iterator)
 
@@ -376,8 +376,8 @@ while episode < episodes_for_training:
 
         if step % eval_interval == 0:
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-            print('step = {0}: Average Return = {1:0.2f}'.format(step, avg_return))
             returns.append(avg_return)
+            print('step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
 
         if finish_train:
             break
@@ -402,4 +402,4 @@ if trace:
 
 print("Training finished..... {}".format(datetime.now() - tm_g_start))
 print(returns)
-print_summary(q_net)
+#print_summary(q_net)
