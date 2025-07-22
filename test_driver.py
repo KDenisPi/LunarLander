@@ -261,14 +261,15 @@ while episode < episodes_for_training:
 
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
+    #Trying to avoid: "The number of pending items is alarmingly high, did you forget to call Flush?"
+    rb_observer.flush()
+
     num_frames = replay_buffer.num_frames()
     #print("Episode: {} Frames in reply buffer: {}".format(episode, num_frames))
 
     episode = episode + 1
-
     if num_frames == 0:
         break
-
 
     """
     iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
@@ -295,11 +296,10 @@ while episode < episodes_for_training:
     episodes_trj = 0
     boundary_trj = 0
 
-    counter = 0
+    counter = 0 #items processed during this episode
     while step < num_frames:
         # Use data from the buffer and update the agent's network.
         trajectories, _ = next(iterator)
-
         counter = counter + 1
         """
         print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7}".format(
@@ -334,7 +334,6 @@ while episode < episodes_for_training:
         reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
         loss_counter = loss_counter + train_loss.loss
         #print("Episode {0} Step: {1} Loss: {2:0.2f} Reward: {3:0.2f}".format(episode, step, train_loss.loss, np.sum(trajectories.reward.numpy())))
-
 
         if np.sum(trajectories.reward.numpy()) > 10000:
             loss_overflow = True
