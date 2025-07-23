@@ -31,7 +31,7 @@ collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 2000000 # @param {type:"integer"}
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 150000 # 100 @param {type:"integer"}
+eval_interval = 100000 # 100 @param {type:"integer"}
 log_interval = 50000 # 50 @param {type:"integer"}
 
 layer_sz = [256, 128]
@@ -70,7 +70,7 @@ def collect_episode(environment, num_episodes, agent):
         policy=collect_policy,
         observers=[rb_observer],
         end_episode_on_boundary=True,
-        #max_steps=0,
+        max_steps=600,
         max_episodes=num_episodes)
 
     last_time_step, policy_state = driver.run(initial_time_step)
@@ -262,7 +262,7 @@ while episode < episodes_for_training:
     # Collect a few episodes using collect_policy and save to the replay buffer.
     collect_episode(train_py_env, collect_episodes_per_iteration, agent)
     #Trying to avoid: "The number of pending items is alarmingly high, did you forget to call Flush?"
-    rb_observer.flush()
+    #rb_observer.flush()
 
     num_frames = replay_buffer.num_frames()
     #print("Episode: {} Frames in reply buffer: {}".format(episode, num_frames))
@@ -289,6 +289,8 @@ while episode < episodes_for_training:
     #print("Frames in reply buffer: {}".format(replay_buffer.num_frames()))
     exit()
     """
+
+    tm_start = datetime.now()
 
     reward_counter = 0.0
     loss_counter = 0.0
@@ -352,9 +354,11 @@ while episode < episodes_for_training:
 
 
         if step % log_interval == 0:
-            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Duration {3} sec Episode: {4}'.format(
-                step, train_loss.loss, np.sum(trajectories.reward.numpy()), (datetime.now()-tm_start).seconds, episode))
-            tm_start = datetime.now()
+            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Episode: {3}'.format(
+                step, train_loss.loss, np.sum(trajectories.reward.numpy()), episode))
+
+        if step % 200 == 0:
+            rb_observer.flush()
 
 
         #if np.sum(trajectories.is_boundary()):
@@ -376,7 +380,7 @@ while episode < episodes_for_training:
         if step % eval_interval == 0:
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
             returns.append(avg_return)
-            print('step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
+            print('---> Step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
 
         if finish_train:
             break
@@ -390,8 +394,8 @@ while episode < episodes_for_training:
     #print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Reward: {3:0.2f} Loss: {4:0.2f}".format(
     # episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
 
-    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7}".format(
-        episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj))
+    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7} Duration: {8}".format(
+        episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
 
     if finish_train:
         break
