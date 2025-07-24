@@ -95,8 +95,8 @@ class ModelParams(object):
             "save_each_episode" : ModelParams.s_save_each_episode,
 
             #agent parameters
-            "optimizer": 0.001,
-            "gamma": 0.9,
+            "optimizer": 0.0001,
+            "gamma": 0.99,
             "epsilon": 0.995
         }
 
@@ -570,7 +570,7 @@ class LunarLander(object):
                 q_network=self.q_net,
                 optimizer=tf.keras.optimizers.Adam(self.cfg.agent_optimizer),
                 gamma=self.cfg.agent_gamma,
-                #epsilon_greedy=0.995,
+                epsilon_greedy=self.cfg.agent_epsilon,
                 td_errors_loss_fn=common.element_wise_squared_loss,
                 train_step_counter=self.train_step_counter)
 

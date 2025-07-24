@@ -24,6 +24,7 @@ from tf_agents.replay_buffers import reverb_utils
 from tf_agents.drivers import py_driver
 from tf_agents.networks.layer_utils import print_summary
 
+from tf_agents.policies import epsilon_greedy_policy
 
 env_name = "LunarLander-v2" # @param {type:"string"}
 episodes_for_training = 2500
@@ -54,7 +55,7 @@ def handler(signum, frame):
     finish_train = True
 
 
-def collect_episode(environment, num_episodes, agent):
+def collect_episode(environment, num_episodes, agent, max_steps=None):
     """Collect data for episode"""
     #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
 
@@ -70,42 +71,11 @@ def collect_episode(environment, num_episodes, agent):
         policy=collect_policy,
         observers=[rb_observer],
         end_episode_on_boundary=True,
-        max_steps=600,
+        max_steps=max_steps,
         max_episodes=num_episodes)
 
     last_time_step, policy_state = driver.run(initial_time_step)
     #print("Last step: first {} last {}".format(last_time_step.is_first(), last_time_step.is_last()))
-
-
-def compute_avg_return(environment, policy, num_episodes=10):
-    #print("Started compute_avg_return")
-
-    total_return = 0.0
-    for eps in range(num_episodes):
-        time_step = environment.reset()
-        episode_return = 0.0
-        steps = 0
-        tm_start = datetime.now()
-
-        while not time_step.is_last():
-            action_step = policy.action(time_step)
-            time_step = environment.step(action_step.action)
-            episode_return += time_step.reward
-            steps = steps + 1
-        total_return += episode_return
-        """
-        print('Episode: {0} Rewards: {1:0.2f} {2} steps {3} Duration {4} sec'.format(
-            eps,
-            episode_return.numpy()[0],
-            time_step.reward.numpy(),
-            steps,
-            (datetime.now()-tm_start).seconds)
-            )
-        """
-
-    avg_return = total_return / num_episodes
-    return avg_return.numpy()[0]
-
 
 #Set CTRL+C handler
 signal.signal(signal.SIGINT, handler)
@@ -123,14 +93,6 @@ action_tensor_spec = train_env.action_spec()
 num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 observations = train_env.time_step_spec().observation.shape[0]
-
-print("Num actions: {}".format(num_actions))
-print("Num observations: {}".format(observations))
-
-print('Time Step Spec: {}'.format(train_env.time_step_spec()))
-print('Observation Spec: {}'.format(train_env.time_step_spec().observation))
-print('Reward Spec: {}'.format(train_env.time_step_spec().reward))
-print('Action Spec: {}'.format(train_env.action_spec()))
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
@@ -176,14 +138,15 @@ q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], inpu
 # lerning rate - Adam optimizer parameter (0.001 - 0.0001)
 # the discount factor (γ) of future rewards - gamma (0.9-1.0)
 #
-optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate) #use lerning rate by default 0.001
+
 train_step_counter = tf.Variable(0)
+fn_optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate)
 
 agent = dqn_agent.DqnAgent(
         train_env.time_step_spec(),
         train_env.action_spec(),
         q_network=q_net,
-        optimizer=optimizer,
+        optimizer=fn_optimizer,
         gamma=gamma,
         epsilon_greedy=epsilon,
         td_errors_loss_fn=common.element_wise_squared_loss,
@@ -219,10 +182,6 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
     table_name,
     sequence_length=2)
 
-
-print("Start training.....")
-print_summary(q_net)
-
 #for l_n in range(0,4):
 #    lyr = q_net.get_layer(index=l_n)
 #    print('Name: {} Trainamle: {} Config: {}'.format(lyr.name, lyr.trainable, lyr.get_config()))
@@ -230,38 +189,22 @@ print_summary(q_net)
 
 #exit()
 
-avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-returns = [avg_return]
-
-tm_g_start = datetime.now()
-tm_start = datetime.now()
-
 replay_buffer.clear()
-
-step = agent.train_step_counter.numpy()
-print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), step))
-
-loss_overflow = False
-
-if trace:
-    pr_options = tf.profiler.experimental.ProfilerOptions(
-        host_tracer_level=3,
-        python_tracer_level=1,
-        device_tracer_level=1,
-        delay_ms=None
-    )
-
-    tf.profiler.experimental.start(trace_fld, options=pr_options)
-
-
 iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))  #sample_batch_size - TODO
 
 episode = 0
-while episode < episodes_for_training:
+step = 0
+counter_max = 0
+
+num_episodes=2
+max_steps=600
+
+print("Driver: Max number episodes:{} max number steps: {}".format(num_episodes, max_steps))
+while episode < 10:
     rb_observer.flush()
     # Collect a few episodes using collect_policy and save to the replay buffer.
-    collect_episode(train_py_env, collect_episodes_per_iteration, agent)
-    #Trying to avoid: "The number of pending items is alarmingly high, did you forget to call Flush?"
+    #collect_episode(train_py_env, num_episodes=collect_episodes_per_iteration, agent=agent, max_steps=None)
+    collect_episode(train_py_env, num_episodes=num_episodes, agent=agent, max_steps=max_steps)
 
     num_frames = replay_buffer.num_frames()
     #print("Episode: {} Frames in reply buffer: {}".format(episode, num_frames))
@@ -289,21 +232,20 @@ while episode < episodes_for_training:
     exit()
     """
 
-    tm_start = datetime.now()
-
-    reward_counter = 0.0
-    loss_counter = 0.0
-
     episodes_trj = 0
     boundary_trj = 0
+
+    trj_episode_last = False
+    trj_boundary_last = False
 
     counter = 0 #items processed during this episode
     while step < num_frames:
         # Use data from the buffer and update the agent's network.
         trajectories, _ = next(iterator)
         counter = counter + 1
+        step = step + 1
         """
-        print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7}".format(
+        print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7} {8}".format(
                                                         trajectories.action.numpy(),
                                                         trajectories.reward.numpy(),
                                                         trajectories.step_type.numpy(),
@@ -311,36 +253,18 @@ while episode < episodes_for_training:
                                                         trajectories.discount.numpy(),
                                                         trajectories.is_last().numpy(),
                                                         trajectories.is_boundary().numpy(),
-                                                        np.sum(trajectories.is_boundary())))
+                                                        np.sum(trajectories.is_boundary()),
+                                                        np.sum(trajectories.is_last())))
         """
         #print(trajectories)
 
         if np.sum(trajectories.is_last()):
             episodes_trj = episodes_trj + 1
-            #print("----> End of Episode step: {}".format(counter))
-        if np.sum(trajectories.is_boundary()):
-            boundary_trj = boundary_trj + 1
-            #print("----> End of Boundary step: {}".format(counter))
-        #continue
-
-        step = agent.train_step_counter.numpy()
-
-        if trace:
-            with tf.profiler.experimental.Trace("Train", step_num=step):
-                train_loss = agent.train(experience=trajectories)
-        else:
-            train_loss = agent.train(experience=trajectories)
-
-
-        reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
-        loss_counter = loss_counter + train_loss.loss
-        #print("Episode {0} Step: {1} Loss: {2:0.2f} Reward: {3:0.2f}".format(episode, step, train_loss.loss, np.sum(trajectories.reward.numpy())))
-
-        if np.sum(trajectories.reward.numpy()) > 10000:
-            loss_overflow = True
-
-        if loss_overflow:
-            print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7}".format(
+            #print("----> End of Episode Local: {} Global: {}".format(counter, step))
+            if step == num_frames:
+                trj_episode_last = True
+            """
+            print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7} {8}".format(
                                                             trajectories.action.numpy(),
                                                             trajectories.reward.numpy(),
                                                             trajectories.step_type.numpy(),
@@ -348,16 +272,15 @@ while episode < episodes_for_training:
                                                             trajectories.discount.numpy(),
                                                             trajectories.is_last().numpy(),
                                                             trajectories.is_boundary().numpy(),
-                                                            np.sum(trajectories.is_boundary())))
+                                                            np.sum(trajectories.is_boundary()),
+                                                            np.sum(trajectories.is_last())))
+            """
 
-
-
-        if step % log_interval == 0:
-            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Episode: {3}'.format(
-                step, train_loss.loss, np.sum(trajectories.reward.numpy()), episode))
-
-        if step % 200 == 0:
-            rb_observer.flush()
+        if np.sum(trajectories.is_boundary()):
+            boundary_trj = boundary_trj + 1
+            #print("----> End of Boundary Local: {} Global: {}".format(counter, step))
+            if step == num_frames:
+                trj_boundary_last = True
 
 
         #if np.sum(trajectories.is_boundary()):
@@ -376,16 +299,10 @@ while episode < episodes_for_training:
         #        episode, step, num_frames, episodes_trj, boundary_trj, counter))
         #    break
 
-        if step % eval_interval == 0:
-            avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-            returns.append(avg_return)
-            print('---> Step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
 
         if finish_train:
             break
 
-    if loss_overflow:
-        break
 
     #print("Episodes: {} Boundary: {}".format(episodes_trj, boundary_trj))
     #exit()
@@ -393,15 +310,18 @@ while episode < episodes_for_training:
     #print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Reward: {3:0.2f} Loss: {4:0.2f}".format(
     # episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
 
-    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7} Duration: {8}".format(
-        episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
+    print("Episode: {0} Steps: {1} Frames in reply buffer: {2} Counter: {3} {4} {5} Last: {6} {7}".format(
+        episode, step, num_frames, counter, episodes_trj, boundary_trj, trj_episode_last, trj_boundary_last))
+
+    if counter > counter_max:
+        counter_max = counter
 
     if finish_train:
         break
 
+print("Driver: Max number episodes:{} max number steps: {} Max counter: {}".format(num_episodes, max_steps, counter_max))
+
 if trace:
     tf.profiler.experimental.stop()
 
-print("Training finished..... {}".format(datetime.now() - tm_g_start))
-print(returns)
 #print_summary(q_net)

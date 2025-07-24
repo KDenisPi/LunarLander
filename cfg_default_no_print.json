@@ -10,7 +10,7 @@
 
     "optimizer": 0.0001,
     "gamma": 0.99,
-    "epsilon": 0.1,
+    "epsilon": 0.995,
 
     "layers": [
         {
