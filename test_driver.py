@@ -35,6 +35,7 @@ episode_for_checkpoint = 250
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 150000 # 100 @param {type:"integer"}
 log_interval = 50000 # 50 @param {type:"integer"}
+log_episode_interval = 5
 
 layer_sz = [256, 128]
 bias = [None, None]  #tf.keras.initializers.Constant(-0.2)
@@ -395,14 +396,13 @@ while episode < episodes_for_training:
     if loss_overflow:
         break
 
-    #print("Episodes: {} Boundary: {}".format(episodes_trj, boundary_trj))
-    #exit()
-
-    #print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Reward: {3:0.2f} Loss: {4:0.2f}".format(
-    # episode, step, num_frames, reward_counter/num_frames, loss_counter/num_frames))
-
-    print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7} Duration: {8}".format(
-        episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
+    if counter > 0:
+        if log_episode_interval == 0 or (episode % log_episode_interval) == 0:
+            print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7} Duration: {8}".format(
+                episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
+    else:
+        print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter(Zero): {3} {6} {7} Duration: {8}".format(
+            episode, step, num_frames, counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
 
     if train_checkpointer and (episode % episode_for_checkpoint == 0):
         train_checkpointer.save(global_step=train_step_counter)
