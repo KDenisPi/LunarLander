@@ -26,13 +26,15 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-episodes_for_training = 2500
+episodes_for_training = 150
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 2000000 # @param {type:"integer"}
+replay_buffer_capacity = 200000 # @param {type:"integer"}
+
+episode_for_checkpoint = 50
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 100000 # 100 @param {type:"integer"}
-log_interval = 50000 # 50 @param {type:"integer"}
+eval_interval = 15000 # 100 @param {type:"integer"}
+log_interval = 5000 # 50 @param {type:"integer"}
 
 layer_sz = [256, 128]
 bias = [None, None]  #tf.keras.initializers.Constant(-0.2)
@@ -44,6 +46,9 @@ epsilon=0.995
 trace = False
 trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
 
+checkpoint_dir = './data/checkpoint'
+results_file = './data/results.dat'
+
 finish_train = False
 
 def handler(signum, frame):
@@ -52,6 +57,21 @@ def handler(signum, frame):
     print(f'Signal handler called with signal {signame} ({signum})')
     global finish_train
     finish_train = True
+
+def save_results(filename:str, results:list):
+    with  open(filename, 'w') as file:
+        for result in results:
+            file.write(str(result) + '\n')
+    file.close()
+
+def read_results(filename:str) -> list:
+    results = []
+    if os.path.exists(filename):
+        with open(filename, 'r') as file:
+            results = file.readlines()
+            results = [int(item.strip()) for item in results]
+        file.close()
+    return results
 
 
 def collect_episode(environment, num_episodes, agent):
@@ -93,15 +113,14 @@ def compute_avg_return(environment, policy, num_episodes=10):
             episode_return += time_step.reward
             steps = steps + 1
         total_return += episode_return
-        """
-        print('Episode: {0} Rewards: {1:0.2f} {2} steps {3} Duration {4} sec'.format(
+
+        print('Evaluation episode: {0} Rewards: {1:0.2f} {2} steps {3} Duration {4} sec'.format(
             eps,
             episode_return.numpy()[0],
             time_step.reward.numpy(),
             steps,
             (datetime.now()-tm_start).seconds)
             )
-        """
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
@@ -124,13 +143,13 @@ num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 observations = train_env.time_step_spec().observation.shape[0]
 
-print("Num actions: {}".format(num_actions))
-print("Num observations: {}".format(observations))
+#print("Num actions: {}".format(num_actions))
+#print("Num observations: {}".format(observations))
 
-print('Time Step Spec: {}'.format(train_env.time_step_spec()))
-print('Observation Spec: {}'.format(train_env.time_step_spec().observation))
-print('Reward Spec: {}'.format(train_env.time_step_spec().reward))
-print('Action Spec: {}'.format(train_env.action_spec()))
+#print('Time Step Spec: {}'.format(train_env.time_step_spec()))
+#print('Observation Spec: {}'.format(train_env.time_step_spec().observation))
+#print('Reward Spec: {}'.format(train_env.time_step_spec().reward))
+#print('Action Spec: {}'.format(train_env.action_spec()))
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
@@ -220,6 +239,21 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
     sequence_length=2)
 
 
+train_checkpointer = None
+if checkpoint_dir:
+    train_checkpointer = common.Checkpointer(
+        ckpt_dir=checkpoint_dir,
+        max_to_keep=1,
+        agent=agent,
+        policy=agent.policy,
+        replay_buffer=replay_buffer,
+        global_step=train_step_counter
+    )
+    train_checkpointer.initialize_or_restore()
+    print("Loaded checkpoint from: {} Step: {}".format(checkpoint_dir, train_step_counter))
+
+
+
 print("Start training.....")
 print_summary(q_net)
 
@@ -230,15 +264,18 @@ print_summary(q_net)
 
 #exit()
 
+returns = read_results(results_file)
+print(returns)
+
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-returns = [avg_return]
+returns.append(avg_return)
 
 tm_g_start = datetime.now()
 tm_start = datetime.now()
 
 replay_buffer.clear()
 
-step = agent.train_step_counter.numpy()
+step = 0 #agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), step))
 
 loss_overflow = False
@@ -270,25 +307,6 @@ while episode < episodes_for_training:
     if num_frames == 0:
         break
 
-    """
-    iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
-    print("Iterator element spec: {}".format(iterator.element_spec))
-
-    while counter <= num_frames:
-        trajectories, _ = next(iterator)
-        #print(trajectories)
-        print("{0} Action:{1} Reward:{2} Step type: {3}".format(counter,
-                                                            trajectories.action.numpy(),
-                                                            trajectories.reward.numpy(),
-                                                            trajectories.step_type.numpy()))
-        counter = counter + 1
-        #break
-
-    #replay_buffer.clear()
-    #print("Frames in reply buffer: {}".format(replay_buffer.num_frames()))
-    exit()
-    """
-
     tm_start = datetime.now()
 
     reward_counter = 0.0
@@ -302,17 +320,6 @@ while episode < episodes_for_training:
         # Use data from the buffer and update the agent's network.
         trajectories, _ = next(iterator)
         counter = counter + 1
-        """
-        print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7}".format(
-                                                        trajectories.action.numpy(),
-                                                        trajectories.reward.numpy(),
-                                                        trajectories.step_type.numpy(),
-                                                        trajectories.next_step_type.numpy(),
-                                                        trajectories.discount.numpy(),
-                                                        trajectories.is_last().numpy(),
-                                                        trajectories.is_boundary().numpy(),
-                                                        np.sum(trajectories.is_boundary())))
-        """
         #print(trajectories)
 
         if np.sum(trajectories.is_last()):
@@ -323,10 +330,11 @@ while episode < episodes_for_training:
             #print("----> End of Boundary step: {}".format(counter))
         #continue
 
-        step = agent.train_step_counter.numpy()
+        #step = agent.train_step_counter.numpy()
+        step = step + 1
 
         if trace:
-            with tf.profiler.experimental.Trace("Train", step_num=step):
+            with tf.profiler.experimental.Trace("Train", step_num=agent.train_step_counter.numpy()):
                 train_loss = agent.train(experience=trajectories)
         else:
             train_loss = agent.train(experience=trajectories)
@@ -353,8 +361,8 @@ while episode < episodes_for_training:
 
 
         if step % log_interval == 0:
-            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Episode: {3}'.format(
-                step, train_loss.loss, np.sum(trajectories.reward.numpy()), episode))
+            print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f} Episode: {3} G.Step: {4}'.format(
+                step, train_loss.loss, np.sum(trajectories.reward.numpy()), episode, agent.train_step_counter.numpy()))
 
         if step % 200 == 0:
             rb_observer.flush()
@@ -376,10 +384,10 @@ while episode < episodes_for_training:
         #        episode, step, num_frames, episodes_trj, boundary_trj, counter))
         #    break
 
-        if step % eval_interval == 0:
+        if step > 0 and step % eval_interval == 0:
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
             returns.append(avg_return)
-            print('---> Step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
+            print('---> Step = {0}: Average Return = {1:0.2f} All: {2} G.Step: {3}'.format(step, avg_return, returns, agent.train_step_counter.numpy()))
 
         if finish_train:
             break
@@ -396,11 +404,23 @@ while episode < episodes_for_training:
     print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7} Duration: {8}".format(
         episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
 
+    if train_checkpointer and (episode % episode_for_checkpoint == 0):
+        train_checkpointer.save(global_step=train_step_counter)
+        print("Save checkpoint Episode: {} Step: {}".format(episode, train_step_counter.numpy()))
+
     if finish_train:
         break
 
 if trace:
     tf.profiler.experimental.stop()
+
+
+if train_checkpointer:
+    train_checkpointer.save(global_step=train_step_counter)
+    print("Last save checkpoint Episode: {} Step: {}".format(episode, train_step_counter.numpy()))
+
+
+save_results(results_file, returns)
 
 print("Training finished..... {}".format(datetime.now() - tm_g_start))
 print(returns)

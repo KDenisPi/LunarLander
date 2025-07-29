@@ -220,10 +220,15 @@ while episode < 10:
     while counter <= num_frames:
         trajectories, _ = next(iterator)
         #print(trajectories)
-        print("{0} Action:{1} Reward:{2} Step type: {3}".format(counter,
-                                                            trajectories.action.numpy(),
-                                                            trajectories.reward.numpy(),
-                                                            trajectories.step_type.numpy()))
+        print("Ac:{0} Rw:{1} Stp:{2} NStp: {3} Dsc:{4} Last: {5} Boundary: {6} {7}".format(
+                                                        trajectories.action.numpy(),
+                                                        trajectories.reward.numpy(),
+                                                        trajectories.step_type.numpy(),
+                                                        trajectories.next_step_type.numpy(),
+                                                        trajectories.discount.numpy(),
+                                                        trajectories.is_last().numpy(),
+                                                        trajectories.is_boundary().numpy(),
+                                                        np.sum(trajectories.is_boundary())))
         counter = counter + 1
         #break
 
