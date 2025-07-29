@@ -26,15 +26,15 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-episodes_for_training = 150
+episodes_for_training = 1500
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 200000 # @param {type:"integer"}
+replay_buffer_capacity = 600000 # @param {type:"integer"}
 
-episode_for_checkpoint = 50
+episode_for_checkpoint = 250
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 15000 # 100 @param {type:"integer"}
-log_interval = 5000 # 50 @param {type:"integer"}
+eval_interval = 150000 # 100 @param {type:"integer"}
+log_interval = 50000 # 50 @param {type:"integer"}
 
 layer_sz = [256, 128]
 bias = [None, None]  #tf.keras.initializers.Constant(-0.2)
@@ -69,7 +69,7 @@ def read_results(filename:str) -> list:
     if os.path.exists(filename):
         with open(filename, 'r') as file:
             results = file.readlines()
-            results = [int(item.strip()) for item in results]
+            results = [float(item.strip()) for item in results]
         file.close()
     return results
 
