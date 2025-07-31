@@ -26,7 +26,7 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-episodes_for_training = 1500
+episodes_for_training = 4500
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 600000 # @param {type:"integer"}
 
@@ -401,7 +401,7 @@ while episode < episodes_for_training:
             print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter: {3} Reward: {4:0.2f} Loss: {5:0.2f} {6} {7} Duration: {8}".format(
                 episode, step, num_frames, counter, reward_counter/counter, loss_counter/counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
     else:
-        print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter(Zero): {3} {6} {7} Duration: {8}".format(
+        print("Episode: {0} Current step: {1} Frames in reply buffer: {2} Counter(Zero): {3} {4} {5} Duration: {6}".format(
             episode, step, num_frames, counter, episodes_trj, boundary_trj, (datetime.now()-tm_start).seconds))
 
     if train_checkpointer and (episode % episode_for_checkpoint == 0):
