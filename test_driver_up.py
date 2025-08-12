@@ -50,8 +50,8 @@ epsilon=0.995
 trace = False
 trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
 
-checkpoint_dir = None #'./data/checkpoint'
-results_file = './data/results.dat'
+checkpoint_dir = './data/checkpoint_up'
+results_file = './data/results_up.dat'
 
 finish_train = False
 
@@ -253,26 +253,18 @@ if checkpoint_dir:
 print("Start training.....")
 print_summary(q_net)
 
-#for l_n in range(0,4):
-#    lyr = q_net.get_layer(index=l_n)
-#    print('Name: {} Trainamle: {} Config: {}'.format(lyr.name, lyr.trainable, lyr.get_config()))
-#    #print('Name: {} Weights: {}'.format(lyr.name, lyr.get_weights()))
-
-#exit()
-
 returns = read_results(results_file)
 print(returns)
 
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns.append(avg_return)
 
-tm_g_start = datetime.now()
 tm_start = datetime.now()
 
 replay_buffer.clear()
 
-step = 0 #agent.train_step_counter.numpy()
-print("Frames in reply buffer: {} Step: {}".format(replay_buffer.num_frames(), step))
+f_step = agent.train_step_counter.numpy()
+print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
 
 iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=2))
 
@@ -302,11 +294,10 @@ for _ in range(num_iterations):
 
     step = agent.train_step_counter.numpy()
     if step % log_interval == 0:
-        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(
-            step, train_loss.loss, np.sum(trajectories.reward.numpy())))
+        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy())))
         if step > 0:
-            print('step = {0}: Avg.Loss = {1:0.2f} Avg.Reward: {2:0.2f}'.format(
-                step, loss_counter/step, reward_counter/step, step))
+            print('step = {0}: Avg.Loss = {1:0.2f} Avg.Reward: {2:0.2f} Sec. {3}'.format(
+                step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
 
     if step % 200 == 0:
         rb_observer.flush()
@@ -329,6 +320,6 @@ if train_checkpointer:
 
 save_results(results_file, returns)
 
-print("Training finished..... {}".format(datetime.now() - tm_g_start))
+print("Training finished..... {}".format(datetime.now() - tm_start))
 print(returns)
 #print_summary(q_net)
