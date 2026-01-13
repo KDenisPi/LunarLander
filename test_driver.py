@@ -38,7 +38,7 @@ log_interval = 50000 # 50 @param {type:"integer"}
 log_episode_interval = 5
 
 layer_sz = [256, 128]
-bias = [None, None]  #tf.keras.initializers.Constant(-0.2)
+bias = [tf.keras.initializers.Constant(-0.2), None]  #tf.keras.initializers.Constant(-0.2)
 lrn_rate=0.0001
 gamma=0.99
 epsilon=0.995
@@ -180,7 +180,7 @@ layer_2 =  tf.keras.layers.Dense(
     )
 
 """
-Output layer - number od units equal number of actions (4 in our case)
+Output layer - number of units equal number of actions (4 in our case)
 """
 q_values_layer = tf.keras.layers.Dense(
     num_actions,

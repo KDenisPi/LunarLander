@@ -17,13 +17,8 @@ def load_checkpoint(folder : str) -> any:
         dtype_from_key = reader.get_variable_to_dtype_map()
 
         sorted(shape_from_key.keys())
-        #print(shape_from_key.keys())
-        #print("--------\n")
-        #print(dtype_from_key.keys())
-        #print("--------\n")
         for key in shape_from_key.keys():
-            #key = 'global_step/.ATTRIBUTES/VARIABLE_VALUE'
-            print("Key: {} Shape: {} DType: {}".format(key, shape_from_key[key], dtype_from_key[key].name));
+            print("Key: {} Shape: {} DType: {} Value: {}".format(key, shape_from_key[key], dtype_from_key[key].name, reader.get_tensor(key)))
 
     except ValueError as verr:
         print("Could not load checkpoints from {1} Error: {2}".format(folder, verr))

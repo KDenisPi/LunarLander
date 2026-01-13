@@ -26,14 +26,11 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 20000
-episodes_for_training = 4500
+num_iterations = 1000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 100000 # @param {type:"integer"}
+replay_buffer_capacity = 150000 # @param {type:"integer"}
 
 batch_size = 64
-
-episode_for_checkpoint = 250
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 2000 # 100 @param {type:"integer"}
@@ -41,17 +38,18 @@ log_interval = 1000 # 50 @param {type:"integer"}
 log_episode_interval = 5
 
 layer_sz = [256, 128]
-bias = [None, None]  #tf.keras.initializers.Constant(-0.2)
+bias = [tf.keras.initializers.Constant(-0.2), tf.keras.initializers.Constant(-0.2)]  #tf.keras.initializers.Constant(-0.2)
 lrn_rate=0.0001
 gamma=0.99
-epsilon=0.995
+epsilon=0.95 #0.995
 
 
 trace = False
 trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
 
-checkpoint_dir = './data/checkpoint_up'
-results_file = './data/results_up.dat'
+episode_for_checkpoint = 250
+checkpoint_dir = './data/multi_checkpoint_up_4'
+results_file = './data/results_up_4.dat'
 
 finish_train = False
 
@@ -235,19 +233,30 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
     sequence_length=2)
 
 
-train_checkpointer = None
+ckpt = None
+ckpt_manager = None
+
 if checkpoint_dir:
-    train_checkpointer = common.Checkpointer(
-        ckpt_dir=checkpoint_dir,
-        max_to_keep=1,
+    ckpt = tf.train.Checkpoint(#common.Checkpointer(
+        #ckpt_dir=checkpoint_dir,
+        step=tf.Variable(1),
+        #max_to_keep=1,
         agent=agent,
         policy=agent.policy,
         replay_buffer=replay_buffer,
         global_step=train_step_counter
     )
-    train_checkpointer.initialize_or_restore()
-    print("Loaded checkpoint from: {} Step: {}".format(checkpoint_dir, train_step_counter))
+    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=5)
+    ckpt_mng_last = ckpt_manager.latest_checkpoint
+    if ckpt_mng_last is not None:
+        print("Restore Ckpt from: {}".format(ckpt_mng_last))
+        ckpt.restore(ckpt_mng_last)
+    else:
+        print("No checkpoints")
 
+    #ckpt.initialize_or_restore()
+    print("Loaded checkpoint from: {} Step: {} Save counter: {}".format(checkpoint_dir, train_step_counter.numpy(), ckpt.save_counter.numpy()))
+    #exit()
 
 
 print("Start training.....")
@@ -311,11 +320,21 @@ for _ in range(num_iterations):
         returns.append(avg_return)
         print('---> Step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
 
+    if step % episode_for_checkpoint == 0:
+        if ckpt:
+            ckpt.step.assign_add(1)
+            sv_folder = ckpt_manager.save()
+            print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
+
+
     if finish_train:
         break
 
-if train_checkpointer:
-    train_checkpointer.save(global_step=train_step_counter)
+if ckpt:
+    ckpt.step.assign_add(1)
+    sv_folder = ckpt_manager.save()
+    print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
+    #ckpt.save(global_step=train_step_counter)
 
 
 save_results(results_file, returns)
