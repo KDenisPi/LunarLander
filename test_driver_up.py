@@ -47,8 +47,11 @@ epsilon=0.95 #0.995
 trace = False
 trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
 
+#checkpoints
+ckpt_max_to_keep = 5
 episode_for_checkpoint = 250
 checkpoint_dir = './data/multi_checkpoint_up_4'
+
 results_file = './data/results_up_4.dat'
 
 finish_train = False
@@ -237,16 +240,14 @@ ckpt = None
 ckpt_manager = None
 
 if checkpoint_dir:
-    ckpt = tf.train.Checkpoint(#common.Checkpointer(
-        #ckpt_dir=checkpoint_dir,
+    ckpt = tf.train.Checkpoint(
         step=tf.Variable(1),
-        #max_to_keep=1,
         agent=agent,
         policy=agent.policy,
         replay_buffer=replay_buffer,
         global_step=train_step_counter
     )
-    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=5)
+    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=ckpt_max_to_keep)
     ckpt_mng_last = ckpt_manager.latest_checkpoint
     if ckpt_mng_last is not None:
         print("Restore Ckpt from: {}".format(ckpt_mng_last))

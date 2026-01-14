@@ -18,7 +18,7 @@ def load_checkpoint(folder : str) -> any:
 
         sorted(shape_from_key.keys())
         for key in shape_from_key.keys():
-            print("Key: {} Shape: {} DType: {} Value: {}".format(key, shape_from_key[key], dtype_from_key[key].name, reader.get_tensor(key)))
+            print("Key: {} Shape: {} DType: {}".format(key, shape_from_key[key], dtype_from_key[key].name))
 
     except ValueError as verr:
         print("Could not load checkpoints from {1} Error: {2}".format(folder, verr))
