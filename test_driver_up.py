@@ -43,10 +43,6 @@ lrn_rate=0.0001
 gamma=0.99
 epsilon=0.95 #0.995
 
-
-trace = False
-trace_fld = '/home/denis/sources/LunarLander/logs' if trace else ''
-
 #checkpoints
 ckpt_max_to_keep = 5
 episode_for_checkpoint = 250

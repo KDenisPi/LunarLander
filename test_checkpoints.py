@@ -40,9 +40,11 @@ def load_checkpoint(folder : str, vars : list, summ : dict) -> any:
 def folder_ckpts_info(base_folder : str) -> dict:
     """"""
     vars = ['agent/_target_q_network/_sequential_layers/0/bias/.ATTRIBUTES/VARIABLE_VALUE',
-            'agent/_target_q_network/_sequential_layers/1/bias/.ATTRIBUTES/VARIABLE_VALUE',
-            'agent/_target_q_network/_sequential_layers/2/bias/.ATTRIBUTES/VARIABLE_VALUE',
-            'agent/_optimizer/_learning_rate/.ATTRIBUTES/VARIABLE_VALUE']
+            #'agent/_target_q_network/_sequential_layers/1/bias/.ATTRIBUTES/VARIABLE_VALUE',
+            #'agent/_target_q_network/_sequential_layers/2/bias/.ATTRIBUTES/VARIABLE_VALUE',
+            'agent/_target_q_network/_sequential_layers/3/bias/.ATTRIBUTES/VARIABLE_VALUE'
+            #'agent/_optimizer/_learning_rate/.ATTRIBUTES/VARIABLE_VALUE'
+            ]
     ckpt = tf.train.Checkpoint(
         step=tf.Variable(1),
     )
@@ -57,15 +59,53 @@ def folder_ckpts_info(base_folder : str) -> dict:
 
     return result
 
+def create_csv(data : dict, csv_prefix : str) -> None:
+    """
+    Docstring for create_csv
+    
+    :param data: Description
+    :type data: dict
+    """
+    for key in data.keys():
+        filename = csv_prefix + key.replace('/', '_') + ".csv"
+        print(filename)
+
+        with open(filename, 'w') as file:
+            idx = 0
+            headers = None
+            for item in data[key]:
+                if not isinstance(item, type([])):
+                    break
+
+                if not headers:
+                    headers = ['Idx'] + [str(i) for i in range(len(item))]
+                    file.write("{}\n".format(",".join(headers)))
+                
+                item_str = [str(i) for i in item]
+                file.write("{},{}\n".format(idx, ",".join(item_str)))
+                idx += 1
+            file.close()
+
+    
+
 if __name__ == '__main__':
     folder = None
+    csv_prefix = None
 
     if len(sys.argv) > 1:
         folder = sys.argv[1]
     else:
-        print("No checkpoint folder")
+        print("No checkpoint folder\n test_checkpoints.py ckpt_folder [csv_prefix]")
         exit(1)
 
+    if len(sys.argv) > 2:
+        csv_prefix = sys.argv[2]
+
+
     res = folder_ckpts_info(folder)
-    print(res)
+
+    if csv_prefix:
+        create_csv(res, csv_prefix)
+    else:
+        print(res)
 
