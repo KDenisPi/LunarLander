@@ -26,11 +26,11 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 1000
+num_iterations = 10000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 150000 # @param {type:"integer"}
+replay_buffer_capacity = 130000 # @param {type:"integer"}
 
-batch_size = 64
+batch_size = 128#64
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 2000 # 100 @param {type:"integer"}
@@ -44,11 +44,18 @@ gamma=0.99
 epsilon=0.95 #0.995
 
 #checkpoints
-ckpt_max_to_keep = 5
-episode_for_checkpoint = 250
+ckpt_max_to_keep = 10
+episode_for_checkpoint = 1000
 checkpoint_dir = './data/multi_checkpoint_up_4'
 
 results_file = './data/results_up_4.dat'
+result_actions_file = "./data/actions.csv"
+result_info_file = "./data/actions.csv"
+
+
+state_headers = ['Idx','X','Y','Vx','Vy','Angle','Va','LegL','LegR']
+info_headers = ['Idx','Reward','Action','Last']
+
 
 finish_train = False
 
@@ -95,7 +102,7 @@ def collect_episode(environment, num_episodes, agent, num_steps=0):
         max_episodes=num_episodes)
 
     last_time_step, policy_state = driver.run(initial_time_step)
-    #print("Last step: first {} last {}".format(last_time_step.is_first(), last_time_step.is_last()))
+    #print("Last step: {} Policy: {}".format(last_time_step, policy_state))
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
@@ -125,6 +132,25 @@ def compute_avg_return(environment, policy, num_episodes=10):
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
+
+def save_info2cvs(self, csv_file:str, data:list, headers:list) -> None:
+    """
+    Docstring for save_info2cvs
+    
+    :param self: Description
+    :param filename: Description
+    :type filename: str
+    :param data: Description
+    :type data: list
+    :param headers: Description
+    :type headers: list
+    """
+    with open(csv_file, "w") as fd_write:
+        fd_write.write(",".join(headers)+'\n')
+        for ln in data:
+            fd_write.write(",".join(["{:0.2f}".format(l) for l in ln])+'\n')
+        fd_write.close()
+
 
 
 #Set CTRL+C handler
@@ -251,13 +277,30 @@ if checkpoint_dir:
     else:
         print("No checkpoints")
 
-    #ckpt.initialize_or_restore()
     print("Loaded checkpoint from: {} Step: {} Save counter: {}".format(checkpoint_dir, train_step_counter.numpy(), ckpt.save_counter.numpy()))
-    #exit()
 
+stat_actions = []
+stat_info = []
+
+stat_cntr = 0
 
 print("Start training.....")
 print_summary(q_net)
+
+replay_buffer.clear()
+f_step = agent.train_step_counter.numpy()
+print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
+
+if False:
+    collect_episode(train_py_env, num_episodes=1, agent=agent, num_steps=0)#batch_size)
+    print("---New generation Frames in reply buffer: {}".format(replay_buffer.num_frames()))
+    iterator = iter(replay_buffer.as_dataset(sample_batch_size=replay_buffer.num_frames(), num_steps=2))
+    trajectories, _ = next(iterator)
+    print(trajectories)
+    replay_buffer.clear()
+    exit()
+
+iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=2))
 
 returns = read_results(results_file)
 print(returns)
@@ -266,14 +309,6 @@ avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns.append(avg_return)
 
 tm_start = datetime.now()
-
-replay_buffer.clear()
-
-f_step = agent.train_step_counter.numpy()
-print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
-
-iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=2))
-
 
 rb_observer.flush()
 tm_start = datetime.now()
@@ -286,21 +321,24 @@ boundary_trj = 0
 
 for _ in range(num_iterations):
     # Collect a few episodes using collect_policy and save to the replay buffer.
-    collect_episode(train_py_env, num_episodes=0, agent=agent, num_steps=batch_size)#collect_episodes_per_iteration, agent)
+    #changed num_steps = batch_size to 0 Use to episodes = 1 instead 0 
+    collect_episode(train_py_env, num_episodes=1, agent=agent, num_steps=0)#collect_episodes_per_iteration, agent)
 
     num_frames = replay_buffer.num_frames()
     #print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
 
     # Use data from the buffer and update the agent's network.
     trajectories, _ = next(iterator)
+    #print(trajectories)
+    #exit()
     train_loss = agent.train(experience=trajectories)
 
-    reward_counter = reward_counter + np.sum(trajectories.reward.numpy())
+    reward_counter = reward_counter + (np.sum(trajectories.reward.numpy())/batch_size)
     loss_counter = loss_counter + train_loss.loss
 
     step = agent.train_step_counter.numpy()
     if step % log_interval == 0:
-        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, np.sum(trajectories.reward.numpy())))
+        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, (np.sum(trajectories.reward.numpy())/batch_size)))
         if step > 0:
             print('step = {0}: Avg.Loss = {1:0.2f} Avg.Reward: {2:0.2f} Sec. {3}'.format(
                 step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
@@ -323,6 +361,11 @@ for _ in range(num_iterations):
             sv_folder = ckpt_manager.save()
             print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
 
+        replay_buffer.clear()
+        print("Step: {} Clear frames in reply buffer: {}".format(step, num_frames))
+
+        if int(ckpt.step) == ckpt_max_to_keep-1:
+            print(trajectories)
 
     if finish_train:
         break
