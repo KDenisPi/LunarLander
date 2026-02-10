@@ -30,7 +30,7 @@ num_iterations = 10000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 130000 # @param {type:"integer"}
 
-batch_size = 128#64
+batch_size = 128
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 2000 # 100 @param {type:"integer"}
@@ -38,20 +38,49 @@ log_interval = 1000 # 50 @param {type:"integer"}
 log_episode_interval = 5
 
 layer_sz = [256, 128]
-bias = [tf.keras.initializers.Constant(-0.2), tf.keras.initializers.Constant(-0.2)]  #tf.keras.initializers.Constant(-0.2)
-lrn_rate=0.0001
-gamma=0.99
-epsilon=0.95 #0.995
+bias = [tf.keras.initializers.Constant(-0.2), 
+        tf.keras.initializers.Constant(-0.2),
+        tf.keras.initializers.Constant(0)]
+
+kernel_init = [
+            tf.keras.initializers.VarianceScaling(
+                scale=1.0,
+                mode='fan_in',
+                distribution='truncated_normal'),
+            tf.keras.initializers.VarianceScaling(
+                scale=1.0,
+                mode='fan_in',
+                distribution='truncated_normal'),
+            tf.keras.initializers.RandomUniform(
+                minval=-0.03, maxval=0.03)
+        ]
+
+#
+#Important parameters
+# lerning rate - Adam optimizer parameter (0.001 - 0.0001)
+# the discount factor (γ) of future rewards - gamma (0.9-1.0)
+#
+#Epsilon-Greedy Exploration: A strategy used during training to balance exploration 
+#(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value). 
+#The probability of taking a random action, epsilon, typically decays over time. 
+#
+lrn_rate=0.001
+gamma=0.9
+epsilon=0.9 #0.995
+n_step_update = 2
+
+sequence_length = 3
 
 #checkpoints
-ckpt_max_to_keep = 10
+ckpt_max_to_keep = 20
 episode_for_checkpoint = 1000
-checkpoint_dir = './data/multi_checkpoint_up_4'
 
-results_file = './data/results_up_4.dat'
-result_actions_file = "./data/actions.csv"
-result_info_file = "./data/actions.csv"
+run_idx = "up_8"
+checkpoint_dir = './data/multi_checkpoint_{}'.format(run_idx)
+results_file = './data/results_{}.dat'.format(run_idx)
 
+result_actions_file = "./data/actions_{}.csv".format(run_idx)
+result_info_file = "./data/actions_{}.csv".format(run_idx)
 
 state_headers = ['Idx','X','Y','Vx','Vy','Angle','Va','LegL','LegR']
 info_headers = ['Idx','Reward','Action','Last']
@@ -170,6 +199,9 @@ num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 observations = train_env.time_step_spec().observation.shape[0]
 
+print('Time Step Spec: {}'.format(train_env.time_step_spec()))
+
+
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
 # its output.
@@ -179,10 +211,7 @@ layer_1 =  tf.keras.layers.Dense(
     layer_sz[0],
     activation=tf.keras.activations.relu,
     name="LYR_1",
-    kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0,
-        mode='fan_in',
-        distribution='truncated_normal'),
+    kernel_initializer=kernel_init[0],
     bias_initializer=bias[0]
     )
 
@@ -190,10 +219,7 @@ layer_2 =  tf.keras.layers.Dense(
     layer_sz[1],
     activation=tf.keras.activations.relu,
     name="LYR_2",
-    kernel_initializer=tf.keras.initializers.VarianceScaling(
-        scale=1.0,
-        mode='fan_in',
-        distribution='truncated_normal'),
+    kernel_initializer=kernel_init[1],
     bias_initializer=bias[1]
     )
 
@@ -204,8 +230,8 @@ q_values_layer = tf.keras.layers.Dense(
     num_actions,
     activation=None,
     name="Output",
-    kernel_initializer=tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03),
-    bias_initializer=tf.keras.initializers.Constant(-0.2))
+    kernel_initializer=kernel_init[2],
+    bias_initializer=bias[2])
 
 q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], input_spec=train_env.time_step_spec().observation, name="QNet")
 
@@ -214,6 +240,10 @@ q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], inpu
 # lerning rate - Adam optimizer parameter (0.001 - 0.0001)
 # the discount factor (γ) of future rewards - gamma (0.9-1.0)
 #
+#Epsilon-Greedy Exploration: A strategy used during training to balance exploration 
+#(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value). 
+#The probability of taking a random action, epsilon, typically decays over time. 
+
 optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate) #use lerning rate by default 0.001
 train_step_counter = tf.Variable(0)
 
@@ -224,6 +254,7 @@ agent = dqn_agent.DqnAgent(
         optimizer=optimizer,
         gamma=gamma,
         epsilon_greedy=epsilon,
+        n_step_update=n_step_update,
         td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
 
@@ -249,13 +280,14 @@ reverb_server = reverb.Server([table])
 replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
     data_spec=agent.collect_data_spec,
     table_name=table_name,
-    sequence_length=2,
+    sequence_length=sequence_length,
+    dataset_buffer_size=batch_size*3,
     local_server=reverb_server)
 
 rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
     replay_buffer.py_client,
     table_name,
-    sequence_length=2)
+    sequence_length=sequence_length)
 
 
 ckpt = None
@@ -292,15 +324,17 @@ f_step = agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
 
 if False:
-    collect_episode(train_py_env, num_episodes=1, agent=agent, num_steps=0)#batch_size)
+    collect_episode(train_py_env, num_episodes=1, agent=agent, num_steps=0)
+    n_frames = replay_buffer.num_frames()
     print("---New generation Frames in reply buffer: {}".format(replay_buffer.num_frames()))
-    iterator = iter(replay_buffer.as_dataset(sample_batch_size=replay_buffer.num_frames(), num_steps=2))
+    #iterator = iter(replay_buffer.as_dataset(num_steps=2))
+    iterator = iter(replay_buffer.as_dataset(sample_batch_size=n_frames))
     trajectories, _ = next(iterator)
     print(trajectories)
     replay_buffer.clear()
     exit()
 
-iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=2))
+#iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=2))
 
 returns = read_results(results_file)
 print(returns)
@@ -322,19 +356,21 @@ boundary_trj = 0
 for _ in range(num_iterations):
     # Collect a few episodes using collect_policy and save to the replay buffer.
     #changed num_steps = batch_size to 0 Use to episodes = 1 instead 0 
-    collect_episode(train_py_env, num_episodes=1, agent=agent, num_steps=0)#collect_episodes_per_iteration, agent)
+    collect_episode(train_py_env, num_episodes=collect_episodes_per_iteration, agent=agent, num_steps=0)
 
     num_frames = replay_buffer.num_frames()
-    #print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
+    batch_size = num_frames
+    #print("Step: {} Frames in reply buffer: {}".format(agent.train_step_counter.numpy(), num_frames))
 
+    iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=sequence_length))
     # Use data from the buffer and update the agent's network.
     trajectories, _ = next(iterator)
-    #print(trajectories)
-    #exit()
-    train_loss = agent.train(experience=trajectories)
 
+    train_loss = agent.train(experience=trajectories)
     reward_counter = reward_counter + (np.sum(trajectories.reward.numpy())/batch_size)
     loss_counter = loss_counter + train_loss.loss
+
+    replay_buffer.clear()
 
     step = agent.train_step_counter.numpy()
     if step % log_interval == 0:
@@ -361,11 +397,11 @@ for _ in range(num_iterations):
             sv_folder = ckpt_manager.save()
             print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
 
-        replay_buffer.clear()
-        print("Step: {} Clear frames in reply buffer: {}".format(step, num_frames))
+        #replay_buffer.clear()
+        #print("Step: {} Clear frames in reply buffer: {}".format(step, num_frames))
 
-        if int(ckpt.step) == ckpt_max_to_keep-1:
-            print(trajectories)
+        #if int(ckpt.step) == ckpt_max_to_keep-1:
+        #    print(trajectories)
 
     if finish_train:
         break
