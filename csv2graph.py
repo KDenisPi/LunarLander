@@ -42,7 +42,7 @@ class Csv2ImageGenerator:
     def csv2img_filename(self, csv_file : str) -> str:
         """
         Docstring for csv2img_filename
-        
+
         :param self: Description
         :param csv_file: Description
         :type csv_file: str
@@ -52,14 +52,14 @@ class Csv2ImageGenerator:
         img_file = csv_file.replace(".csv", ".png")
         if not self.img_folder:
             return img_file
-        
+
         f_parts = img_file.split("/")
         return "{0}/{1}".format(self.img_folder, f_parts[-1])
-    
+
     def generate_img(self, img_file : str) -> None:
         """
         Docstring for generate_img
-        
+
         :param self: Description
         :param img_file: Description
         :type img_file: str
@@ -76,10 +76,10 @@ class Csv2ImageGenerator:
 
         plt.legend()
         # Save image
-        plt.savefig(img_file)
+        plt.savefig(img_file, dpi=300)
 
         plt.cla()
-    
+
 if __name__ == '__main__':
     """Generate graph"""
 

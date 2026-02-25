@@ -4,7 +4,7 @@ import os
 import sys
 
 import numpy as np
-import reverb
+#import reverb
 
 import tensorflow as tf
 
