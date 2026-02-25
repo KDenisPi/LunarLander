@@ -39,6 +39,16 @@ class Csv2ImageGenerator:
     def img_folder(self, n_val:str) -> None:
         self._img_folder = n_val
 
+    def load_labels(self, labels_file : str) -> list:
+        """Load list of labels from file"""
+        result = []
+        if os.path.exists(labels_file):
+            with open(labels_file, 'r') as file:
+                result = file.readline().split(",")
+            file.close()
+
+        return result
+
     def csv2img_filename(self, csv_file : str) -> str:
         """
         Docstring for csv2img_filename
@@ -56,7 +66,7 @@ class Csv2ImageGenerator:
         f_parts = img_file.split("/")
         return "{0}/{1}".format(self.img_folder, f_parts[-1])
 
-    def generate_img(self, img_file : str) -> None:
+    def generate_img(self, img_file : str, labels:list = []) -> None:
         """
         Docstring for generate_img
 
@@ -72,7 +82,8 @@ class Csv2ImageGenerator:
 
         for y_idx in range(1, len(np_arr[0]-1)):
             y_data = np_arr[:, y_idx]
-            plt.plot(x_data, y_data, label="Val{}".format(y_idx))
+            label = labels[y_idx-1] if len(labels)>0 and y_idx-1 < len(labels) else "Val{}".format(y_idx)
+            plt.plot(x_data, y_data, label=label)
 
         plt.legend()
         # Save image
@@ -82,10 +93,15 @@ class Csv2ImageGenerator:
 
 if __name__ == '__main__':
     """Generate graph"""
+    gen = Csv2ImageGenerator()
 
     csv_file = sys.argv[1]
+    labels = []
 
-    gen = Csv2ImageGenerator()
+    if len(sys.argv) > 2:
+        """Load labels if it is presented"""
+        labels = gen.load_labels(sys.argv[2])
+
     gen.data_file = csv_file
     img_file = gen.csv2img_filename(sys.argv[1])
-    gen.generate_img(img_file)
+    gen.generate_img(img_file, labels)
