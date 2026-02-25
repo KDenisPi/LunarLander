@@ -37,7 +37,16 @@ eval_interval = 2000 # 100 @param {type:"integer"}
 log_interval = 1000 # 50 @param {type:"integer"}
 log_episode_interval = 5
 
+target_update_tau=0.05 	    #Factor for soft update of the target networks.
+target_update_period=5 	    #Period for soft update of the target networks. 
+
 layer_sz = [256, 128]
+
+#In reinforcement learning (RL) and analysis, bias refers to
+#the systematic error or difference between an agent’s predicted value (reward) and the true, actual value. 
+#High bias means the model makes overly simplified assumptions, failing to capture the true reward structure, 
+#which can cause the agent to learn incorrect or sub-optimal policies. 
+
 bias = [tf.keras.initializers.Constant(-0.2), 
         tf.keras.initializers.Constant(-0.2),
         tf.keras.initializers.Constant(0)]
@@ -67,15 +76,15 @@ kernel_init = [
 lrn_rate=0.001
 gamma=0.9
 epsilon=0.9 #0.995
-n_step_update = 2
 
-sequence_length = 3
+sequence_length = 2 #3
+n_step_update = sequence_length - 1
 
 #checkpoints
 ckpt_max_to_keep = 20
 episode_for_checkpoint = 1000
 
-run_idx = "up_8"
+run_idx = "up_9"
 checkpoint_dir = './data/multi_checkpoint_{}'.format(run_idx)
 results_file = './data/results_{}.dat'.format(run_idx)
 
@@ -252,6 +261,8 @@ agent = dqn_agent.DqnAgent(
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
+        target_update_tau=target_update_tau,
+        target_update_period=target_update_period,        
         gamma=gamma,
         epsilon_greedy=epsilon,
         n_step_update=n_step_update,
@@ -281,7 +292,7 @@ replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
     data_spec=agent.collect_data_spec,
     table_name=table_name,
     sequence_length=sequence_length,
-    dataset_buffer_size=batch_size*3,
+    dataset_buffer_size=batch_size*sequence_length,
     local_server=reverb_server)
 
 rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
@@ -343,9 +354,7 @@ avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns.append(avg_return)
 
 tm_start = datetime.now()
-
 rb_observer.flush()
-tm_start = datetime.now()
 
 reward_counter = 0.0
 loss_counter = 0.0
@@ -356,7 +365,8 @@ boundary_trj = 0
 for _ in range(num_iterations):
     # Collect a few episodes using collect_policy and save to the replay buffer.
     #changed num_steps = batch_size to 0 Use to episodes = 1 instead 0 
-    collect_episode(train_py_env, num_episodes=collect_episodes_per_iteration, agent=agent, num_steps=0)
+    #modified - no agent - random
+    collect_episode(train_py_env, num_episodes=collect_episodes_per_iteration, agent=None, num_steps=0)
 
     num_frames = replay_buffer.num_frames()
     batch_size = num_frames
