@@ -26,7 +26,7 @@ from tf_agents.networks.layer_utils import print_summary
 
 
 env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 10000
+num_iterations = 120000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 130000 # @param {type:"integer"}
 num_initial_records = 1000
@@ -34,36 +34,34 @@ num_initial_records = 1000
 batch_size = 64
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 2000 # 100 @param {type:"integer"}
-log_interval = 1000 # 50 @param {type:"integer"}
+eval_interval = 8000 # 100 @param {type:"integer"}
+log_interval = 5000 # 50 @param {type:"integer"}
 log_episode_interval = 5
+
+flush_interval = 2000
+info_interval = 2500
 
 target_update_tau=0.05 	    #Factor for soft update of the target networks.
 target_update_period=5 	    #Period for soft update of the target networks.
 
-layer_sz = [256, 128]
+layer_sz = [128, 128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
 #High bias means the model makes overly simplified assumptions, failing to capture the true reward structure,
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
-bias = [tf.keras.initializers.Constant(-0.2),
-        tf.keras.initializers.Constant(-0.2),
-        tf.keras.initializers.Constant(0)]
+bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
+        
+bias_lyr_out = tf.keras.initializers.Constant(0)
 
 kernel_init = [
             tf.keras.initializers.VarianceScaling(
                 scale=1.0,
                 mode='fan_in',
-                distribution='truncated_normal'),
-            tf.keras.initializers.VarianceScaling(
-                scale=1.0,
-                mode='fan_in',
-                distribution='truncated_normal'),
-            tf.keras.initializers.RandomUniform(
-                minval=-0.03, maxval=0.03)
-        ]
+                distribution='truncated_normal')] * len(layer_sz)
+
+kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03)
 
 #
 #Important parameters
@@ -76,16 +74,16 @@ kernel_init = [
 #
 lrn_rate=0.001
 gamma=0.9
-epsilon=0.9 #0.995
+epsilon=0.995
 
 sequence_length = 2 #3
 n_step_update = sequence_length - 1
 
 #checkpoints
 ckpt_max_to_keep = 20
-episode_for_checkpoint = 1000
+episode_for_checkpoint = 10000
 
-run_idx = "up_9"
+run_idx = "up_13"
 checkpoint_dir = './data/multi_checkpoint_{}'.format(run_idx)
 results_file = './data/results_{}.dat'.format(run_idx)
 
@@ -121,7 +119,7 @@ def read_results(filename:str) -> list:
     return results
 
 
-def collect_episode(environment, num_episodes, agent, num_steps=0):
+def collect_episode(environment, num_episodes, agent, num_steps=0) -> any:
     """Collect data for episode"""
     #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
 
@@ -141,6 +139,7 @@ def collect_episode(environment, num_episodes, agent, num_steps=0):
         max_episodes=num_episodes)
 
     last_time_step, policy_state = driver.run(initial_time_step)
+    return last_time_step
     #print("Last step: {} Policy: {}".format(last_time_step, policy_state))
 
 
@@ -190,6 +189,15 @@ def save_info2cvs(self, csv_file:str, data:list, headers:list) -> None:
             fd_write.write(",".join(["{:0.2f}".format(l) for l in ln])+'\n')
         fd_write.close()
 
+def create_layer(idx, lyr_size, lyr_bias, lyr_kernel) -> any:
+    return tf.keras.layers.Dense(
+        lyr_size,
+        activation=tf.keras.activations.relu,
+        name="LYR_{}".format(idx),
+        kernel_initializer=lyr_kernel,
+        bias_initializer=lyr_bias
+        )
+
 
 
 #Set CTRL+C handler
@@ -217,21 +225,7 @@ print('Time Step Spec: {}'.format(train_env.time_step_spec()))
 # its output.
 input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
 
-layer_1 =  tf.keras.layers.Dense(
-    layer_sz[0],
-    activation=tf.keras.activations.relu,
-    name="LYR_1",
-    kernel_initializer=kernel_init[0],
-    bias_initializer=bias[0]
-    )
-
-layer_2 =  tf.keras.layers.Dense(
-    layer_sz[1],
-    activation=tf.keras.activations.relu,
-    name="LYR_2",
-    kernel_initializer=kernel_init[1],
-    bias_initializer=bias[1]
-    )
+layers = [create_layer(idx, layer_sz[idx], bias[idx], kernel_init[idx]) for idx in range(len(layer_sz))]
 
 """
 Output layer - number od units equal number of actions (4 in our case)
@@ -240,10 +234,10 @@ q_values_layer = tf.keras.layers.Dense(
     num_actions,
     activation=None,
     name="Output",
-    kernel_initializer=kernel_init[2],
-    bias_initializer=bias[2])
+    kernel_initializer=kernel_init_lyr_out,
+    bias_initializer=bias_lyr_out)
 
-q_net = sequential.Sequential([input_lr, layer_1, layer_2, q_values_layer], input_spec=train_env.time_step_spec().observation, name="QNet")
+q_net = sequential.Sequential([input_lr] + layers + [q_values_layer], input_spec=train_env.time_step_spec().observation, name="QNet")
 
 #
 #Important parameters
@@ -345,7 +339,7 @@ train_driver = py_driver.PyDriver(
 
 replay_buffer.clear()
 
-collect_episode(train_py_env, num_episodes=None, agent=None, num_steps=num_initial_records)
+train_time_step = collect_episode(train_py_env, num_episodes=None, agent=None, num_steps=num_initial_records)
 
 f_step = agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
@@ -392,10 +386,10 @@ for _ in range(num_iterations):
             print('step = {0}: Avg.Loss = {1:0.2f} Avg.Reward: {2:0.2f} Sec. {3}'.format(
                 step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
 
-    if step % 200 == 0:
+    if step % flush_interval == 0:
         rb_observer.flush()
 
-    if step % 100 == 0:
+    if step % info_interval == 0:
         print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
 
 
