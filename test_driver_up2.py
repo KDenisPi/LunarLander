@@ -52,7 +52,7 @@ layer_sz = [128, 128, 64]
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
 bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
-        
+
 bias_lyr_out = tf.keras.initializers.Constant(0)
 
 kernel_init = [
@@ -171,7 +171,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
 
-def save_info2cvs(self, csv_file:str, data:list, headers:list) -> None:
+def save_info2cvs(self, csv_file:str, data:list, headers:list=None) -> None:
     """
     Docstring for save_info2cvs
 
@@ -184,7 +184,8 @@ def save_info2cvs(self, csv_file:str, data:list, headers:list) -> None:
     :type headers: list
     """
     with open(csv_file, "w") as fd_write:
-        fd_write.write(",".join(headers)+'\n')
+        if headers:
+            fd_write.write(",".join(headers)+'\n')
         for ln in data:
             fd_write.write(",".join(["{:0.2f}".format(l) for l in ln])+'\n')
         fd_write.close()
@@ -197,7 +198,6 @@ def create_layer(idx, lyr_size, lyr_bias, lyr_kernel) -> any:
         kernel_initializer=lyr_kernel,
         bias_initializer=lyr_bias
         )
-
 
 
 #Set CTRL+C handler
@@ -261,7 +261,7 @@ agent = dqn_agent.DqnAgent(
         gamma=gamma,
         epsilon_greedy=epsilon,
         n_step_update=n_step_update,
-        td_errors_loss_fn=common.element_wise_squared_loss,
+        td_errors_loss_fn=common.element_wise_huber_loss, #common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
 
 agent.initialize()
@@ -344,7 +344,6 @@ train_time_step = collect_episode(train_py_env, num_episodes=None, agent=None, n
 f_step = agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
 
-
 returns = read_results(results_file)
 print(returns)
 
@@ -352,10 +351,11 @@ avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns.append(avg_return)
 
 tm_start = datetime.now()
-rb_observer.flush()
 
 reward_counter = 0.0
 loss_counter = 0.0
+
+loss_list = []
 
 episodes_trj = 0
 boundary_trj = 0
@@ -366,12 +366,12 @@ for _ in range(num_iterations):
     # Collect a few episodes using collect_policy and save to the replay buffer.
     #changed num_steps = batch_size to 0 Use to episodes = 1 instead 0
     #modified - no agent - random
-    num_frames = replay_buffer.num_frames()
-
     train_time_step, policy_state = train_driver.run(
         time_step=train_time_step,
         policy_state=policy_state,
     )
+
+    num_frames = replay_buffer.num_frames()
 
     # Use data from the buffer and update the agent's network.
     trajectories, _ = next(iterator)
@@ -380,6 +380,9 @@ for _ in range(num_iterations):
     loss_counter = loss_counter + train_loss.loss
 
     step = agent.train_step_counter.numpy()
+
+    loss_list.append([step, train_loss.loss])
+
     if step % log_interval == 0:
         print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, (np.sum(trajectories.reward.numpy())/batch_size)))
         if step > 0:
@@ -415,6 +418,8 @@ if ckpt:
 
 
 save_results(results_file, returns)
+
+save_info2cvs("loss.csv", loss_list)
 
 print("Training finished..... {}".format(datetime.now() - tm_start))
 print(returns)
