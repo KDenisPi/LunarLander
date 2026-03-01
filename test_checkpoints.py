@@ -18,18 +18,19 @@ def load_checkpoint(folder : str, vars : list, summ : dict) -> any:
                 summ[key_short] = []
 
             value = reader.get_tensor(key).tolist()
-            lvalue = any
-            if isinstance(value, type([])):
-                lvalue = [round(num, 5) for num in value]
-            elif isinstance(value, type(1.0)):
-                lvalue = round(value, 5)
+            if value:
+                lvalue = any
+                if isinstance(value, type([])):
+                    lvalue = [round(num, 5) for num in value]
+                elif isinstance(value, type(1.0)):
+                    lvalue = round(value, 5)
+                else:
+                    lvalue = value
+
+                #print("Key: {} Value: {}".format(key_short, lvalue))
+                summ[key_short].append(lvalue)
             else:
-                lvalue = value
-
-            #print("Key: {} Value: {}".format(key_short, lvalue))
-            summ[key_short].append(lvalue)
-
-
+                print("No valye with key: " + key)
 
     except ValueError as verr:
         print("Could not load checkpoints from {1} Error: {2}".format(folder, verr))
@@ -39,12 +40,8 @@ def load_checkpoint(folder : str, vars : list, summ : dict) -> any:
 
 def folder_ckpts_info(base_folder : str) -> dict:
     """"""
-    vars = ['agent/_target_q_network/_sequential_layers/0/bias/.ATTRIBUTES/VARIABLE_VALUE',
-            #'agent/_target_q_network/_sequential_layers/1/bias/.ATTRIBUTES/VARIABLE_VALUE',
-            #'agent/_target_q_network/_sequential_layers/2/bias/.ATTRIBUTES/VARIABLE_VALUE',
-            'agent/_target_q_network/_sequential_layers/3/bias/.ATTRIBUTES/VARIABLE_VALUE'
-            #'agent/_optimizer/_learning_rate/.ATTRIBUTES/VARIABLE_VALUE'
-            ]
+    vars = ["agent/_target_q_network/_sequential_layers/{0}/bias/.ATTRIBUTES/VARIABLE_VALUE".format(x) for x in range(5)]
+    
     ckpt = tf.train.Checkpoint(
         step=tf.Variable(1),
     )

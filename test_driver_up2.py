@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
+import sys
 import base64
 from datetime import datetime
 import signal
@@ -25,13 +26,17 @@ from tf_agents.drivers import py_driver
 from tf_agents.networks.layer_utils import print_summary
 
 
-env_name = "LunarLander-v2" # @param {type:"string"}
-num_iterations = 120000
+tf.compat.v1.enable_v2_behavior()
+
+env_name = 'LunarLander-v2' # @param {type:"string"}
+#env_name='CartPole-v1'
+
+num_iterations = 100000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 130000 # @param {type:"integer"}
 num_initial_records = 1000
 
-batch_size = 64
+batch_size = 128
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 8000 # 100 @param {type:"integer"}
@@ -76,6 +81,8 @@ lrn_rate=0.001
 gamma=0.9
 epsilon=0.995
 
+gradient_clipping = 2.0
+
 sequence_length = 2 #3
 n_step_update = sequence_length - 1
 
@@ -83,7 +90,10 @@ n_step_update = sequence_length - 1
 ckpt_max_to_keep = 20
 episode_for_checkpoint = 10000
 
-run_idx = "up_13"
+run_idx = "up_15"
+if len(sys.argv) >= 2:
+    run_idx = sys.argv[1]
+
 checkpoint_dir = './data/multi_checkpoint_{}'.format(run_idx)
 results_file = './data/results_{}.dat'.format(run_idx)
 
@@ -171,7 +181,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
 
-def save_info2cvs(self, csv_file:str, data:list, headers:list=None) -> None:
+def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
     """
     Docstring for save_info2cvs
 
@@ -258,6 +268,7 @@ agent = dqn_agent.DqnAgent(
         optimizer=optimizer,
         target_update_tau=target_update_tau,
         target_update_period=target_update_period,
+        gradient_clipping=gradient_clipping,
         gamma=gamma,
         epsilon_greedy=epsilon,
         n_step_update=n_step_update,
@@ -326,8 +337,6 @@ print("Start training.....")
 print_summary(q_net)
 
 train_collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
-policy_state = train_collect_policy.get_initial_state(train_py_env.batch_size)
-train_time_step = None
 
 train_driver = py_driver.PyDriver(
     env=train_py_env,
@@ -337,8 +346,7 @@ train_driver = py_driver.PyDriver(
     max_steps=1,
     max_episodes=0)
 
-replay_buffer.clear()
-
+policy_state = train_collect_policy.get_initial_state(train_py_env.batch_size)
 train_time_step = collect_episode(train_py_env, num_episodes=None, agent=None, num_steps=num_initial_records)
 
 f_step = agent.train_step_counter.numpy()
@@ -423,4 +431,3 @@ save_info2cvs("loss.csv", loss_list)
 
 print("Training finished..... {}".format(datetime.now() - tm_start))
 print(returns)
-#print_summary(q_net)
