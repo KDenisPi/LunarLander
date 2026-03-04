@@ -599,8 +599,7 @@ class LunarLander(object):
         table_name = 'uniform_table'
         table = reverb.Table(
             table_name,
-            max_size=self.cfg.replay_buffmpute_avg_return
-er_max_length,
+            max_size=self.cfg.replay_buffer_max_length,
             sampler=reverb.selectors.Uniform(),
             remover=reverb.selectors.Fifo(),
             rate_limiter=reverb.rate_limiters.MinSize(1),

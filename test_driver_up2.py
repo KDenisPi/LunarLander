@@ -28,28 +28,29 @@ from tf_agents.networks.layer_utils import print_summary
 
 tf.compat.v1.enable_v2_behavior()
 
-env_name = 'LunarLander-v2' # @param {type:"string"}
-#env_name='CartPole-v1'
+#env_name = 'LunarLander-v2' # @param {type:"string"}
+env_name='CartPole-v1'
 
 num_iterations = 100000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 130000 # @param {type:"integer"}
 num_initial_records = 1000
 
-batch_size = 128
+batch_size = 64
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 8000 # 100 @param {type:"integer"}
 log_interval = 5000 # 50 @param {type:"integer"}
 log_episode_interval = 5
 
-flush_interval = 2000
-info_interval = 2500
+flush_interval = 5000
+info_interval = 5000
 
 target_update_tau=0.05 	    #Factor for soft update of the target networks.
 target_update_period=5 	    #Period for soft update of the target networks.
 
-layer_sz = [128, 128, 64]
+#layer_sz = [128, 128, 64]
+layer_sz = [128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
@@ -77,11 +78,11 @@ kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0
 #(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
 #The probability of taking a random action, epsilon, typically decays over time. 
 #
-lrn_rate=0.001
+lrn_rate=0.0001
 gamma=0.9
 epsilon=0.995
 
-gradient_clipping = 2.0
+gradient_clipping = 1.0
 
 sequence_length = 2 #3
 n_step_update = sequence_length - 1
@@ -90,7 +91,14 @@ n_step_update = sequence_length - 1
 ckpt_max_to_keep = 20
 episode_for_checkpoint = 10000
 
-run_idx = "up_15"
+ckpt_restored=False
+evaluate_chkpoint=None
+for cmd in sys.argv:
+    if cmd.find("ckpt") >= 0:
+        evaluate_chkpoint = cmd
+        break
+
+run_idx = "up_16"
 if len(sys.argv) >= 2:
     run_idx = sys.argv[1]
 
@@ -209,6 +217,15 @@ def create_layer(idx, lyr_size, lyr_bias, lyr_kernel) -> any:
         bias_initializer=lyr_bias
         )
 
+def tensor_size(tnsr:any) -> any:
+    print("Size: {} {}".format(tnsr.shape.as_list(), len(tnsr.shape.as_list())))
+    if len(tnsr.shape.as_list()) == 0:
+        max_min = tnsr.maximum[()] - tnsr.minimum[()]
+        return max_min+1
+    elif len(tnsr.shape.as_list()) == 1:
+        return tnsr.shape[0]
+    
+    return tnsr.shape[0]*tnsr.shape[1]
 
 #Set CTRL+C handler
 signal.signal(signal.SIGINT, handler)
@@ -222,13 +239,14 @@ eval_py_env.reset()
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
-action_tensor_spec = train_env.action_spec()
-num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
+num_actions = tensor_size(train_env.action_spec())
+observations = tensor_size(train_env.time_step_spec().observation)
 
-observations = train_env.time_step_spec().observation.shape[0]
+print("Action: {}".format(num_actions))
+print("Observations: {}".format(observations))
 
+print('Time Step Spec: {}'.format(train_env.action_spec()))
 print('Time Step Spec: {}'.format(train_env.time_step_spec()))
-
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
@@ -320,9 +338,17 @@ if checkpoint_dir:
     )
     ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_dir, max_to_keep=ckpt_max_to_keep)
     ckpt_mng_last = ckpt_manager.latest_checkpoint
+
+    if evaluate_chkpoint:
+        evt_ckpnt = "{}/{}".format(checkpoint_dir,evaluate_chkpoint)
+        print(evt_ckpnt)
+        ckpt_mng_last = evt_ckpnt if evt_ckpnt in ckpt_manager.checkpoints else ckpt_manager.latest_checkpoint
+
+    print("Available checkpoints: {}".format(ckpt_manager.checkpoints))
     if ckpt_mng_last is not None:
         print("Restore Ckpt from: {}".format(ckpt_mng_last))
-        ckpt.restore(ckpt_mng_last)
+        ckpt.restore(ckpt_mng_last).expect_partial()
+        ckpt_restored=True
     else:
         print("No checkpoints")
 
@@ -332,6 +358,17 @@ stat_actions = []
 stat_info = []
 
 stat_cntr = 0
+
+if evaluate_chkpoint:
+    if not ckpt_restored:
+        print("Model was not trainted, nothing to evaluate")
+        exit()
+
+    eval_result = []
+    for _ in range(3):
+        eval_result.append(compute_avg_return(eval_env, agent.policy, num_eval_episodes))
+    print(eval_result)
+    exit()
 
 print("Start training.....")
 print_summary(q_net)
