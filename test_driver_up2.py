@@ -35,6 +35,7 @@ num_iterations = 100000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 130000 # @param {type:"integer"}
 num_initial_records = 1000
+refill_buffer_interval=20000
 
 batch_size = 64
 
@@ -137,15 +138,14 @@ def read_results(filename:str) -> list:
     return results
 
 
-def collect_episode(environment, num_episodes, agent, num_steps=0) -> any:
+def collect_episode(environment, num_episodes=None, agent=None, num_steps=0, time_step=None) -> any:
     """Collect data for episode"""
     #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
 
     collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True) if agent \
-                else random_py_policy.RandomPyPolicy(environment.time_step_spec(),
-                    environment.action_spec())
+        else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
 
-    initial_time_step = environment.reset()
+    initial_time_step = time_step if time_step else environment.reset()
     #print("First step: first {} last {}".format(initial_time_step.is_first(), initial_time_step.is_last()))
 
     driver = py_driver.PyDriver(
@@ -384,7 +384,7 @@ train_driver = py_driver.PyDriver(
     max_episodes=0)
 
 policy_state = train_collect_policy.get_initial_state(train_py_env.batch_size)
-train_time_step = collect_episode(train_py_env, num_episodes=None, agent=None, num_steps=num_initial_records)
+train_time_step = collect_episode(train_py_env, num_steps=num_initial_records)
 
 f_step = agent.train_step_counter.numpy()
 print("Frames in reply buffer: {} First step: {}".format(replay_buffer.num_frames(), f_step))
@@ -440,7 +440,6 @@ for _ in range(num_iterations):
     if step % info_interval == 0:
         print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
 
-
     if step > 0 and step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
         returns.append(avg_return)
@@ -451,6 +450,11 @@ for _ in range(num_iterations):
             ckpt.step.assign_add(1)
             sv_folder = ckpt_manager.save()
             print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
+
+    if step % refill_buffer_interval == 0:
+        print("{} Refill buffer when size is {}".format(step, num_frames))
+        #replay_buffer.clear()
+        train_time_step = collect_episode(train_py_env, num_steps=num_initial_records*2, time_step=None)
 
     if finish_train:
         break
