@@ -11,17 +11,15 @@ import reverb
 
 import tensorflow as tf
 
+from tensorflow.keras.layers import Dense, Dropout
+
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.specs import tensor_spec
-from tf_agents.environments import suite_gym
-from tf_agents.environments import tf_py_environment
+from tf_agents.environments import suite_gym, tf_py_environment
 from tf_agents.networks import sequential
 from tf_agents.utils import common
-from tf_agents.policies import random_py_policy
-from tf_agents.policies import py_tf_eager_policy
-from tf_agents.specs import tensor_spec
-from tf_agents.replay_buffers import reverb_replay_buffer
-from tf_agents.replay_buffers import reverb_utils
+from tf_agents.policies import py_tf_eager_policy, random_py_policy
+from tf_agents.replay_buffers import reverb_replay_buffer, reverb_utils
 from tf_agents.drivers import py_driver
 from tf_agents.networks.layer_utils import print_summary
 
@@ -31,13 +29,13 @@ tf.compat.v1.enable_v2_behavior()
 #env_name = 'LunarLander-v2' # @param {type:"string"}
 env_name='CartPole-v1'
 
-num_iterations = 100000
+num_iterations = 50000 #100000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = 130000 # @param {type:"integer"}
 num_initial_records = 1000
-refill_buffer_interval=20000
+refill_buffer_interval=0
 
-batch_size = 64
+batch_size = 128 #128
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 8000 # 100 @param {type:"integer"}
@@ -59,6 +57,9 @@ layer_sz = [128, 64]
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
 bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
+dropout = [0.2] * len(layer_sz)
+dropout[1] = 0.5
+
 
 bias_lyr_out = tf.keras.initializers.Constant(0)
 
@@ -193,7 +194,6 @@ def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
     """
     Docstring for save_info2cvs
 
-    :param self: Description
     :param filename: Description
     :type filename: str
     :param data: Description
@@ -204,21 +204,25 @@ def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
     with open(csv_file, "w") as fd_write:
         if headers:
             fd_write.write(",".join(headers)+'\n')
+
         for ln in data:
-            fd_write.write(",".join(["{:0.2f}".format(l) for l in ln])+'\n')
+            fd_write.write(",".join(["{:.3f}".format(l) for l in ln])+'\n')
         fd_write.close()
 
-def create_layer(idx, lyr_size, lyr_bias, lyr_kernel) -> any:
-    return tf.keras.layers.Dense(
+def create_layer(idx, lyr_size, lyr_bias, lyr_kernel, lyr_dropout) -> list:
+    return [
+        Dense(
         lyr_size,
         activation=tf.keras.activations.relu,
         name="LYR_{}".format(idx),
         kernel_initializer=lyr_kernel,
         bias_initializer=lyr_bias
-        )
+        ),
+        Dropout(lyr_dropout)
+    ]
 
 def tensor_size(tnsr:any) -> any:
-    print("Size: {} {}".format(tnsr.shape.as_list(), len(tnsr.shape.as_list())))
+    #print("Size: {} {}".format(tnsr.shape.as_list(), len(tnsr.shape.as_list())))
     if len(tnsr.shape.as_list()) == 0:
         max_min = tnsr.maximum[()] - tnsr.minimum[()]
         return max_min+1
@@ -227,6 +231,25 @@ def tensor_size(tnsr:any) -> any:
     
     return tnsr.shape[0]*tnsr.shape[1]
 
+def save_parameters(StTime, NumIter, BatchSize, UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, Layrs, Bias, DrpOut, results) -> None:
+    filename = "parameters.csv"
+    headers=['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Epsilon', 'GradClip', 'RefillIntr', 'InitRecords', 'Layrs']
+
+    if os.path.exists(filename):
+        headers = None
+
+    with open(filename, 'a') as file:
+        if headers:
+            file.write(",".join(headers)+'\n')
+        file.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},".format(datetime.now(), (datetime.now() - StTime), NumIter, BatchSize, 
+                        UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, len(Layrs)))
+        file.write(",".join(["{}".format(lr) for lr in Layrs])+',')
+        file.write(",".join(["{:0.2f}".format(bs.get_config()['value']) for bs in Bias])+',')
+        file.write(",".join(["{:0.2f}".format(drpout) for drpout in DrpOut])+',')
+        file.write(",".join(["{:0.2f}".format(res) for res in results])+'\n')
+
+        file.close()
+    
 #Set CTRL+C handler
 signal.signal(signal.SIGINT, handler)
 
@@ -251,14 +274,16 @@ print('Time Step Spec: {}'.format(train_env.time_step_spec()))
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
 # its output.
-input_lr = tf.keras.layers.Dense(observations, activation=None, name="Input")
+input_lr = Dense(observations, activation=None, name="Input")
 
-layers = [create_layer(idx, layer_sz[idx], bias[idx], kernel_init[idx]) for idx in range(len(layer_sz))]
+layers = []
+for idx in range(len(layer_sz)):
+    layers = layers + create_layer(idx, layer_sz[idx], bias[idx], kernel_init[idx], dropout[idx])
 
 """
 Output layer - number od units equal number of actions (4 in our case)
 """
-q_values_layer = tf.keras.layers.Dense(
+q_values_layer = Dense(
     num_actions,
     activation=None,
     name="Output",
@@ -421,15 +446,17 @@ for _ in range(num_iterations):
     # Use data from the buffer and update the agent's network.
     trajectories, _ = next(iterator)
     train_loss = agent.train(experience=trajectories)
-    reward_counter = reward_counter + (np.sum(trajectories.reward.numpy())/batch_size)
+    reward_per_batch = (np.sum(trajectories.reward.numpy())/batch_size)
+    reward_counter = reward_counter + reward_per_batch
     loss_counter = loss_counter + train_loss.loss
 
     step = agent.train_step_counter.numpy()
 
+    #loss_list.append([step, train_loss.loss, reward_per_batch])
     loss_list.append([step, train_loss.loss])
 
     if step % log_interval == 0:
-        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, (np.sum(trajectories.reward.numpy())/batch_size)))
+        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, reward_per_batch))
         if step > 0:
             print('step = {0}: Avg.Loss = {1:0.2f} Avg.Reward: {2:0.2f} Sec. {3}'.format(
                 step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
@@ -451,7 +478,7 @@ for _ in range(num_iterations):
             sv_folder = ckpt_manager.save()
             print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
 
-    if step % refill_buffer_interval == 0:
+    if refill_buffer_interval > 0 and step % refill_buffer_interval == 0:
         print("{} Refill buffer when size is {}".format(step, num_frames))
         #replay_buffer.clear()
         train_time_step = collect_episode(train_py_env, num_steps=num_initial_records*2, time_step=None)
@@ -467,8 +494,10 @@ if ckpt:
 
 
 save_results(results_file, returns)
-
 save_info2cvs("loss.csv", loss_list)
+
+save_parameters(tm_start, num_iterations, batch_size, target_update_tau, target_update_period, lrn_rate, gamma, epsilon, 
+                gradient_clipping, sequence_length, refill_buffer_interval, num_initial_records, layer_sz, bias, dropout, returns)
 
 print("Training finished..... {}".format(datetime.now() - tm_start))
 print(returns)
