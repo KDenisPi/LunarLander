@@ -87,7 +87,7 @@ class Csv2ImageGenerator:
 
         plt.legend()
         # Save image
-        plt.savefig(img_file, dpi=300)
+        plt.savefig(img_file, dpi=300) #300
 
         plt.cla()
 

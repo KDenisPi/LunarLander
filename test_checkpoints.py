@@ -17,6 +17,12 @@ def load_checkpoint(folder : str, vars : list, summ : dict) -> any:
             if key_short not in summ:
                 summ[key_short] = []
 
+
+            if not reader.has_tensor(key):
+                print("No key {} for {}".format(key, folder))
+                continue
+
+            #print("Process key {}".format(key))
             value = reader.get_tensor(key).tolist()
             if value:
                 lvalue = any
@@ -29,8 +35,6 @@ def load_checkpoint(folder : str, vars : list, summ : dict) -> any:
 
                 #print("Key: {} Value: {}".format(key_short, lvalue))
                 summ[key_short].append(lvalue)
-            else:
-                print("No valye with key: " + key)
 
     except ValueError as verr:
         print("Could not load checkpoints from {1} Error: {2}".format(folder, verr))
@@ -65,8 +69,12 @@ def create_csv(data : dict, csv_prefix : str) -> None:
     """
     for key in data.keys():
         filename = csv_prefix + key.replace('/', '_') + ".csv"
-        print(filename)
 
+        if len(data[key]) == 0:
+            print("No data skip file {}".format(filename))
+            continue
+
+        print(filename)
         with open(filename, 'w') as file:
             idx = 0
             headers = None
