@@ -57,7 +57,7 @@ layer_sz = [128, 64]
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
 bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
-dropout = [0.2] * len(layer_sz)
+dropout = [0.3] * len(layer_sz)
 dropout[1] = 0.5
 
 
@@ -494,7 +494,7 @@ if ckpt:
 
 
 save_results(results_file, returns)
-save_info2cvs("loss.csv", loss_list)
+save_info2cvs("loss.csv", loss_list, ["Idx", "Loss"])
 
 save_parameters(tm_start, num_iterations, batch_size, target_update_tau, target_update_period, lrn_rate, gamma, epsilon, 
                 gradient_clipping, sequence_length, refill_buffer_interval, num_initial_records, layer_sz, bias, dropout, returns)
