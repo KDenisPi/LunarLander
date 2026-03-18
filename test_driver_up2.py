@@ -29,13 +29,15 @@ tf.compat.v1.enable_v2_behavior()
 #env_name = 'LunarLander-v2' # @param {type:"string"}
 env_name='CartPole-v1'
 
-num_iterations = 50000 #100000
+num_iterations = 85000 #100000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = 130000 # @param {type:"integer"}
-num_initial_records = 1000
+replay_buffer_capacity = num_iterations*2 # @param {type:"integer"}
+num_initial_records = 2500 #1000
 refill_buffer_interval=0
 
-batch_size = 128 #128
+batch_size = 512#256 #128
+
+train_driver_max_step=1
 
 num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 8000 # 100 @param {type:"integer"}
@@ -49,7 +51,7 @@ target_update_tau=0.05 	    #Factor for soft update of the target networks.
 target_update_period=5 	    #Period for soft update of the target networks.
 
 #layer_sz = [128, 128, 64]
-layer_sz = [128, 64]
+layer_sz = [64, 128] #[128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
@@ -57,8 +59,8 @@ layer_sz = [128, 64]
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
 bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
-dropout = [0.3] * len(layer_sz)
-dropout[1] = 0.5
+dropout = [0.2] * len(layer_sz)
+#dropout[1] = 0.5
 
 
 bias_lyr_out = tf.keras.initializers.Constant(0)
@@ -285,7 +287,7 @@ Output layer - number od units equal number of actions (4 in our case)
 """
 q_values_layer = Dense(
     num_actions,
-    activation=None,
+    activation= None, #tf.keras.activations.sigmoid,
     name="Output",
     kernel_initializer=kernel_init_lyr_out,
     bias_initializer=bias_lyr_out)
@@ -329,7 +331,7 @@ table_name = 'uniform_table'
 table = reverb.Table(
     table_name,
     max_size=replay_buffer_capacity,
-    sampler=reverb.selectors.Uniform(),
+    sampler=reverb.selectors.Uniform(), #reverb.selectors.Lifo(),
     remover=reverb.selectors.Fifo(),
     rate_limiter=reverb.rate_limiters.MinSize(1),
     signature=replay_buffer_signature
@@ -405,7 +407,7 @@ train_driver = py_driver.PyDriver(
     policy=train_collect_policy,
     observers=[rb_observer],
     end_episode_on_boundary=True,
-    max_steps=1,
+    max_steps=train_driver_max_step,
     max_episodes=0)
 
 policy_state = train_collect_policy.get_initial_state(train_py_env.batch_size)
