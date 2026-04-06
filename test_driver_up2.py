@@ -5,6 +5,7 @@ import sys
 import base64
 from datetime import datetime
 import signal
+import math
 
 import numpy as np
 import reverb
@@ -26,21 +27,21 @@ from tf_agents.networks.layer_utils import print_summary
 
 tf.compat.v1.enable_v2_behavior()
 
-#env_name = 'LunarLander-v2' # @param {type:"string"}
-env_name='CartPole-v1'
+env_name = 'LunarLander-v2' # @param {type:"string"}
+#env_name='CartPole-v1'
 
-num_iterations = 85000 #100000
+num_iterations = 200000 #100000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = num_iterations*2 # @param {type:"integer"}
-num_initial_records = 2500 #1000
+replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
+num_initial_records = 2500  if num_iterations <= 120000 else 5000 #1000
 refill_buffer_interval=0
 
-batch_size = 512#256 #128
+batch_size = 256
 
 train_driver_max_step=1
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 8000 # 100 @param {type:"integer"}
+eval_interval = 10000 # 100 @param {type:"integer"}
 log_interval = 5000 # 50 @param {type:"integer"}
 log_episode_interval = 5
 
@@ -51,7 +52,7 @@ target_update_tau=0.05 	    #Factor for soft update of the target networks.
 target_update_period=5 	    #Period for soft update of the target networks.
 
 #layer_sz = [128, 128, 64]
-layer_sz = [64, 128] #[128, 64]
+layer_sz = [128, 128] #[128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
@@ -84,8 +85,11 @@ kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0
 #
 lrn_rate=0.0001
 gamma=0.9
-epsilon=0.995
-
+#epsilon=0.995
+# Add these three lines instead:
+epsilon_start  = 1.0
+epsilon_end    = 0.01
+epsilon_decay  = 0.0001 #0.00005  # controls how fast it falls
 gradient_clipping = 1.0
 
 sequence_length = 2 #3
@@ -315,7 +319,7 @@ agent = dqn_agent.DqnAgent(
         target_update_period=target_update_period,
         gradient_clipping=gradient_clipping,
         gamma=gamma,
-        epsilon_greedy=epsilon,
+        epsilon_greedy=epsilon_start,
         n_step_update=n_step_update,
         td_errors_loss_fn=common.element_wise_huber_loss, #common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
@@ -453,6 +457,13 @@ for _ in range(num_iterations):
     loss_counter = loss_counter + train_loss.loss
 
     step = agent.train_step_counter.numpy()
+
+    # Decay epsilon each step
+    epsilon = epsilon_end + (epsilon_start - epsilon_end) * math.exp(-epsilon_decay * step)
+    agent.collect_policy._epsilon = epsilon  # inject updated value
+
+    if step % log_interval == 0:
+        print(f'step={step}  loss={train_loss.loss:.3f}  ε={epsilon:.4f}')
 
     #loss_list.append([step, train_loss.loss, reward_per_batch])
     loss_list.append([step, train_loss.loss])
