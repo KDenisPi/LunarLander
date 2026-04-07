@@ -27,16 +27,16 @@ from tf_agents.networks.layer_utils import print_summary
 
 tf.compat.v1.enable_v2_behavior()
 
-env_name = 'LunarLander-v2' # @param {type:"string"}
-#env_name='CartPole-v1'
+#env_name = 'LunarLander-v2' # @param {type:"string"}
+env_name='CartPole-v1'
 
-num_iterations = 200000 #100000
+num_iterations = 200000 if env_name == 'LunarLander-v2' else 80000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
-num_initial_records = 2500  if num_iterations <= 120000 else 5000 #1000
+num_initial_records = 1000 if num_iterations <= 100000 else 5000 #1000
 refill_buffer_interval=0
 
-batch_size = 256
+batch_size = 256 #256
 
 train_driver_max_step=1
 
@@ -44,6 +44,7 @@ num_eval_episodes = 10 # @param {type:"integer"}
 eval_interval = 10000 # 100 @param {type:"integer"}
 log_interval = 5000 # 50 @param {type:"integer"}
 log_episode_interval = 5
+log_loss_interval = 1000
 
 flush_interval = 5000
 info_interval = 5000
@@ -52,7 +53,7 @@ target_update_tau=0.05 	    #Factor for soft update of the target networks.
 target_update_period=5 	    #Period for soft update of the target networks.
 
 #layer_sz = [128, 128, 64]
-layer_sz = [128, 128] #[128, 64]
+layer_sz = [128, 64] #[128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
@@ -60,7 +61,7 @@ layer_sz = [128, 128] #[128, 64]
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
 bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
-dropout = [0.2] * len(layer_sz)
+dropout = [0.2] * len(layer_sz) if env_name=='LunarLander-v2' else [0.1] * len(layer_sz)
 #dropout[1] = 0.5
 
 
@@ -89,7 +90,7 @@ gamma=0.9
 # Add these three lines instead:
 epsilon_start  = 1.0
 epsilon_end    = 0.01
-epsilon_decay  = 0.0001 #0.00005  # controls how fast it falls
+epsilon_decay  = 0.0001 #0.0001 #0.00005  # controls how fast it falls
 gradient_clipping = 1.0
 
 sequence_length = 2 #3
@@ -218,14 +219,23 @@ def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
 def create_layer(idx, lyr_size, lyr_bias, lyr_kernel, lyr_dropout) -> list:
     return [
         Dense(
-        lyr_size,
-        activation=tf.keras.activations.relu,
-        name="LYR_{}".format(idx),
-        kernel_initializer=lyr_kernel,
-        bias_initializer=lyr_bias
-        ),
+            lyr_size,
+            activation=tf.keras.activations.relu,
+            name="LYR_{}".format(idx),
+            kernel_initializer=lyr_kernel,
+            bias_initializer=lyr_bias
+            ),
         Dropout(lyr_dropout)
+    ] if lyr_dropout > 0 else [
+            Dense(
+                lyr_size,
+                activation=tf.keras.activations.relu,
+                name="LYR_{}".format(idx),
+                kernel_initializer=lyr_kernel,
+                bias_initializer=lyr_bias
+                )
     ]
+
 
 def tensor_size(tnsr:any) -> any:
     #print("Size: {} {}".format(tnsr.shape.as_list(), len(tnsr.shape.as_list())))
@@ -247,7 +257,7 @@ def save_parameters(StTime, NumIter, BatchSize, UpTau, UpPrd, LrnRate, Gamma, Ep
     with open(filename, 'a') as file:
         if headers:
             file.write(",".join(headers)+'\n')
-        file.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},".format(datetime.now(), (datetime.now() - StTime), NumIter, BatchSize, 
+        file.write("{},{},{},{},{},{},{},{},{:0.2f},{},{},{},{},{},".format(datetime.now(), (datetime.now() - StTime), NumIter, BatchSize, 
                         UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, len(Layrs)))
         file.write(",".join(["{}".format(lr) for lr in Layrs])+',')
         file.write(",".join(["{:0.2f}".format(bs.get_config()['value']) for bs in Bias])+',')
@@ -462,23 +472,21 @@ for _ in range(num_iterations):
     epsilon = epsilon_end + (epsilon_start - epsilon_end) * math.exp(-epsilon_decay * step)
     agent.collect_policy._epsilon = epsilon  # inject updated value
 
-    if step % log_interval == 0:
-        print(f'step={step}  loss={train_loss.loss:.3f}  ε={epsilon:.4f}')
-
     #loss_list.append([step, train_loss.loss, reward_per_batch])
-    loss_list.append([step, train_loss.loss])
+    if step % log_loss_interval == 0:
+        loss_list.append([step, train_loss.loss])
 
     if step % log_interval == 0:
-        print('step = {0}: loss = {1:0.2f} Reward: {2:0.2f}'.format(step, train_loss.loss, reward_per_batch))
-        if step > 0:
-            print('step = {0}: Avg.Loss = {1:0.2f} Avg.Reward: {2:0.2f} Sec. {3}'.format(
-                step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
+        print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4}'.format(step, train_loss.loss, reward_per_batch, epsilon, (datetime.now()-tm_start).seconds))
+        #if step > 0:
+        #    print('step = {0}: Avg.Loss = {1:0.3f} Avg.Reward: {2:0.3f} Sec. {3}'.format(
+        #        step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
 
     if step % flush_interval == 0:
         rb_observer.flush()
 
-    if step % info_interval == 0:
-        print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
+    #if step % info_interval == 0:
+    #    print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
 
     if step > 0 and step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
@@ -490,11 +498,6 @@ for _ in range(num_iterations):
             ckpt.step.assign_add(1)
             sv_folder = ckpt_manager.save()
             print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
-
-    if refill_buffer_interval > 0 and step % refill_buffer_interval == 0:
-        print("{} Refill buffer when size is {}".format(step, num_frames))
-        #replay_buffer.clear()
-        train_time_step = collect_episode(train_py_env, num_steps=num_initial_records*2, time_step=None)
 
     if finish_train:
         break
