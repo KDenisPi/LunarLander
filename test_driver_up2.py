@@ -27,13 +27,13 @@ from tf_agents.networks.layer_utils import print_summary
 
 tf.compat.v1.enable_v2_behavior()
 
-#env_name = 'LunarLander-v2' # @param {type:"string"}
-env_name='CartPole-v1'
+env_name = 'LunarLander-v2' # @param {type:"string"}
+#env_name='CartPole-v1'
 
-num_iterations = 200000 if env_name == 'LunarLander-v2' else 80000
+num_iterations = 60000 if env_name == 'LunarLander-v2' else 80000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
-num_initial_records = 1000 if num_iterations <= 100000 else 5000 #1000
+num_initial_records = 5000 #if num_iterations <= 100000 else 5000 #1000
 refill_buffer_interval=0
 
 batch_size = 256 #256
@@ -41,28 +41,31 @@ batch_size = 256 #256
 train_driver_max_step=1
 
 num_eval_episodes = 10 # @param {type:"integer"}
-eval_interval = 10000 # 100 @param {type:"integer"}
+
+eval_interval = 20000 # 100 @param {type:"integer"}
 log_interval = 5000 # 50 @param {type:"integer"}
-log_episode_interval = 5
-log_loss_interval = 1000
+log_loss_interval = log_interval
+
+#checkpoints
+ckpt_max_to_keep = 20
+episode_for_checkpoint = eval_interval
 
 flush_interval = 5000
-info_interval = 5000
 
-target_update_tau=0.05 	    #Factor for soft update of the target networks.
-target_update_period=5 	    #Period for soft update of the target networks.
+target_update_tau=0.005 #0.05	    #Factor for soft update of the target networks.
+target_update_period=10 #5 	    #Period for soft update of the target networks.
 
 #layer_sz = [128, 128, 64]
-layer_sz = [128, 64] #[128, 64]
+layer_sz = [128, 256] #[128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
 #High bias means the model makes overly simplified assumptions, failing to capture the true reward structure,
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
-bias = [tf.keras.initializers.Constant(-0.2)] * len(layer_sz)
-dropout = [0.2] * len(layer_sz) if env_name=='LunarLander-v2' else [0.1] * len(layer_sz)
-#dropout[1] = 0.5
+bias = [tf.keras.initializers.Constant(0.0)] * len(layer_sz) #-0.2
+dropout = [0.0] * len(layer_sz) if env_name=='LunarLander-v2' else [0.1] * len(layer_sz)
+#dropout[-1] = 0.5
 
 
 bias_lyr_out = tf.keras.initializers.Constant(0)
@@ -84,21 +87,17 @@ kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0
 #(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
 #The probability of taking a random action, epsilon, typically decays over time. 
 #
-lrn_rate=0.0001
-gamma=0.9
-#epsilon=0.995
+lrn_rate=0.00005 #0.0001
+gamma=0.99
+
 # Add these three lines instead:
 epsilon_start  = 1.0
-epsilon_end    = 0.01
-epsilon_decay  = 0.0001 #0.0001 #0.00005  # controls how fast it falls
-gradient_clipping = 1.0
+epsilon_end    = 0.05 #0.01
+epsilon_decay  = 0.00003 #0.0001 #0.00005  # controls how fast it falls
+gradient_clipping = 0.5 #1.0
 
 sequence_length = 2 #3
 n_step_update = sequence_length - 1
-
-#checkpoints
-ckpt_max_to_keep = 20
-episode_for_checkpoint = 10000
 
 ckpt_restored=False
 evaluate_chkpoint=None
@@ -119,7 +118,6 @@ result_info_file = "./data/actions_{}.csv".format(run_idx)
 
 state_headers = ['Idx','X','Y','Vx','Vy','Angle','Va','LegL','LegR']
 info_headers = ['Idx','Reward','Action','Last']
-
 
 finish_train = False
 
@@ -171,6 +169,7 @@ def collect_episode(environment, num_episodes=None, agent=None, num_steps=0, tim
 
 def compute_avg_return(environment, policy, num_episodes=10):
     #print("Started compute_avg_return")
+    print(tf.keras.backend.learning_phase())
 
     total_return = 0.0
     for eps in range(num_episodes):
@@ -484,9 +483,6 @@ for _ in range(num_iterations):
 
     if step % flush_interval == 0:
         rb_observer.flush()
-
-    #if step % info_interval == 0:
-    #    print("Step: {} Frames in reply buffer: {}".format(step, num_frames))
 
     if step > 0 and step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
