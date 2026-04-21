@@ -27,16 +27,16 @@ from tf_agents.networks.layer_utils import print_summary
 
 tf.compat.v1.enable_v2_behavior()
 
-env_name = 'LunarLander-v2' # @param {type:"string"}
-#env_name='CartPole-v1'
+#env_name = 'LunarLander-v2' # @param {type:"string"}
+env_name='CartPole-v1'
 
-num_iterations = 60000 if env_name == 'LunarLander-v2' else 80000
+num_iterations = 80000 if env_name == 'LunarLander-v2' else 80000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
-num_initial_records = 5000 #if num_iterations <= 100000 else 5000 #1000
+num_initial_records = 15000 #if num_iterations <= 100000 else 5000 #1000
 refill_buffer_interval=0
 
-batch_size = 256 #256
+batch_size = 256 # 256 #256
 
 train_driver_max_step=1
 
@@ -50,13 +50,13 @@ log_loss_interval = log_interval
 ckpt_max_to_keep = 20
 episode_for_checkpoint = eval_interval
 
-flush_interval = 5000
+flush_interval = 0 #5000
 
-target_update_tau=0.005 #0.05	    #Factor for soft update of the target networks.
-target_update_period=10 #5 	    #Period for soft update of the target networks.
+target_update_tau=0.001 #0.005 #0.05	    #Factor for soft update of the target networks.
+target_update_period=30 #10 #5 	    #Period for soft update of the target networks.
 
 #layer_sz = [128, 128, 64]
-layer_sz = [128, 256] #[128, 64]
+layer_sz = [128, 128] #[128, 256] #[128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
@@ -64,7 +64,7 @@ layer_sz = [128, 256] #[128, 64]
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
 bias = [tf.keras.initializers.Constant(0.0)] * len(layer_sz) #-0.2
-dropout = [0.0] * len(layer_sz) if env_name=='LunarLander-v2' else [0.1] * len(layer_sz)
+dropout = [0.0] * len(layer_sz) if env_name=='LunarLander-v2' else [0.0] * len(layer_sz)
 #dropout[-1] = 0.5
 
 
@@ -93,8 +93,8 @@ gamma=0.99
 # Add these three lines instead:
 epsilon_start  = 1.0
 epsilon_end    = 0.05 #0.01
-epsilon_decay  = 0.00003 #0.0001 #0.00005  # controls how fast it falls
-gradient_clipping = 0.5 #1.0
+epsilon_decay  = 0.00001 #0.00003 #0.0001 #0.00005  # controls how fast it falls
+gradient_clipping = 0.2 #0.5 #1.0
 
 sequence_length = 2 #3
 n_step_update = sequence_length - 1
@@ -169,7 +169,7 @@ def collect_episode(environment, num_episodes=None, agent=None, num_steps=0, tim
 
 def compute_avg_return(environment, policy, num_episodes=10):
     #print("Started compute_avg_return")
-    print(tf.keras.backend.learning_phase())
+    #print(tf.keras.backend.learning_phase())
 
     total_return = 0.0
     for eps in range(num_episodes):
@@ -414,6 +414,7 @@ print("Start training.....")
 print_summary(q_net)
 
 train_collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
+#train_collect_policy = random_py_policy.RandomPyPolicy(train_py_env.time_step_spec(), train_py_env.action_spec())
 
 train_driver = py_driver.PyDriver(
     env=train_py_env,
@@ -424,6 +425,8 @@ train_driver = py_driver.PyDriver(
     max_episodes=0)
 
 policy_state = train_collect_policy.get_initial_state(train_py_env.batch_size)
+
+#put initial number of records to buffer
 train_time_step = collect_episode(train_py_env, num_steps=num_initial_records)
 
 f_step = agent.train_step_counter.numpy()
@@ -451,6 +454,7 @@ for _ in range(num_iterations):
     # Collect a few episodes using collect_policy and save to the replay buffer.
     #changed num_steps = batch_size to 0 Use to episodes = 1 instead 0
     #modified - no agent - random
+
     train_time_step, policy_state = train_driver.run(
         time_step=train_time_step,
         policy_state=policy_state,
@@ -461,8 +465,10 @@ for _ in range(num_iterations):
     # Use data from the buffer and update the agent's network.
     trajectories, _ = next(iterator)
     train_loss = agent.train(experience=trajectories)
+
     reward_per_batch = (np.sum(trajectories.reward.numpy())/batch_size)
     reward_counter = reward_counter + reward_per_batch
+    
     loss_counter = loss_counter + train_loss.loss
 
     step = agent.train_step_counter.numpy()
@@ -472,16 +478,16 @@ for _ in range(num_iterations):
     agent.collect_policy._epsilon = epsilon  # inject updated value
 
     #loss_list.append([step, train_loss.loss, reward_per_batch])
-    if step % log_loss_interval == 0:
+    if step > 0 and step % log_loss_interval == 0:
         loss_list.append([step, train_loss.loss])
 
     if step % log_interval == 0:
-        print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4}'.format(step, train_loss.loss, reward_per_batch, epsilon, (datetime.now()-tm_start).seconds))
+        print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4} Frames: {5}'.format(step, train_loss.loss, reward_per_batch, epsilon, (datetime.now()-tm_start).seconds, num_frames))
         #if step > 0:
         #    print('step = {0}: Avg.Loss = {1:0.3f} Avg.Reward: {2:0.3f} Sec. {3}'.format(
         #        step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
 
-    if step % flush_interval == 0:
+    if flush_interval > 0 and step % flush_interval == 0:
         rb_observer.flush()
 
     if step > 0 and step % eval_interval == 0:
@@ -489,7 +495,7 @@ for _ in range(num_iterations):
         returns.append(avg_return)
         print('---> Step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
 
-    if step % episode_for_checkpoint == 0:
+    if step > 0 and step % episode_for_checkpoint == 0:
         if ckpt:
             ckpt.step.assign_add(1)
             sv_folder = ckpt_manager.save()
@@ -497,6 +503,10 @@ for _ in range(num_iterations):
 
     if finish_train:
         break
+
+avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+returns.append(avg_return)
+print('---> Step = {0}: Average Return = {1:0.2f} All: {2}'.format(step, avg_return, returns))
 
 if ckpt:
     ckpt.step.assign_add(1)
