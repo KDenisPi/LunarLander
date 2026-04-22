@@ -1,0 +1,42 @@
+Stratergey for LL
+
+num_iterations = 80000
+batch_size = 256
+num_initial_records = 15000
+target_update_tau=0.001 #Factor for soft update of the target networks.
+target_update_period=30 #Period for soft update of the target networks.
+layer_sz = [128, 128]
+bias = 0.0
+No Dropout layers
+kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03)
+lrn_rate=0.00005
+gamma=0.99
+epsilon_start  = 1.0
+epsilon_end    = 0.05
+epsilon_decay  = 0.00001 # controls how fast it falls
+gradient_clipping = 0.2
+sequence_length = 2
+
+
+0. See above
+1. num_initial_records = 15000 -> 25000
+2. lrn_rate = 0.00005 -> 0.00002, num_initial_records 25000 -> 35000
+3. lrn_rate = 0.00002 -> 0.00005 
+4. layer_sz = [128, 128] -> [256,128]    
+5. batch_size = 256 -> 512
+6. target_update_tau=0.001 -> 0.003,  target_update_period=30 -> 15
+7. target_update_tau=0.003 -> 0.002,  target_update_period=15 -> 25, num_initial_records 35000 -> 45000
+8. num_iterations = 80000 -> 120000
+9. batch_size = 512 -> 768
+
+   
+Notes: 
+0. Loss unstable [-537.2892, -94.24758, -92.93103, -112.124245, -156.44307]
+1. Loss unstable. loss[1.8(65K)-0.6(80K)]  [-619.3556, -56.461708, -136.58952]
+2. Стало хуже. loss [3.3(40K)-0.62(75K)] [-487.8449, -43.35317, -36.903973]
+3. Не лучше loss [2.2(50K)-0.69(80K)] [-487.8449, -43.35317, -36.903973]
+4. Не особо loss [2.3(5K)-0.7(35K)][-479.90924, -151.13132, -175.20877]
+5. Тоже самое, даже немного хуже. loss [2.1(70K)-0.72(35K)] [-430.35898, -111.244736, -152.5836]
+6. Кажется не помогло. loss [2.5(65K)-0.37(15K)] [-598.35077, -190.8477, -211.09647]
+7. Вроде получше loss [1.7(25K)-0.4(80K)] [-461.45892, -189.90524, -195.03305]
+8. Нет, не то, loss [2.2(15K)-0.5(85K)] [-839.0492, -199.88422, -251.39145]
