@@ -30,7 +30,7 @@ tf.compat.v1.enable_v2_behavior()
 #env_name = 'LunarLander-v2' # @param {type:"string"}
 env_name='CartPole-v1'
 
-num_iterations = 80000 if env_name == 'LunarLander-v2' else 80000
+num_iterations = 80000 if env_name == 'LunarLander-v2' else 25000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
 num_initial_records = 15000 #if num_iterations <= 100000 else 5000 #1000
@@ -243,11 +243,11 @@ def tensor_size(tnsr:any) -> any:
         return max_min+1
     elif len(tnsr.shape.as_list()) == 1:
         return tnsr.shape[0]
-    
+
     return tnsr.shape[0]*tnsr.shape[1]
 
 def save_parameters(StTime, NumIter, BatchSize, UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, Layrs, Bias, DrpOut, results) -> None:
-    filename = "parameters.csv"
+    filename = "./data/parameters.csv"
     headers=['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Epsilon', 'GradClip', 'RefillIntr', 'InitRecords', 'Layrs']
 
     if os.path.exists(filename):
@@ -256,15 +256,32 @@ def save_parameters(StTime, NumIter, BatchSize, UpTau, UpPrd, LrnRate, Gamma, Ep
     with open(filename, 'a') as file:
         if headers:
             file.write(",".join(headers)+'\n')
-        file.write("{},{},{},{},{},{},{},{},{:0.2f},{},{},{},{},{},".format(datetime.now(), (datetime.now() - StTime), NumIter, BatchSize, 
+        file.write("{},{},{},{},{},{},{},{},{:0.2f},{},{},{},{},{},".format(datetime.now(), (datetime.now() - StTime), NumIter, BatchSize,
                         UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, len(Layrs)))
         file.write(",".join(["{}".format(lr) for lr in Layrs])+',')
         file.write(",".join(["{:0.2f}".format(bs.get_config()['value']) for bs in Bias])+',')
         file.write(",".join(["{:0.2f}".format(drpout) for drpout in DrpOut])+',')
         file.write(",".join(["{:0.2f}".format(res) for res in results])+'\n')
 
-        file.close()
-    
+def param_names(q_net) -> list:
+    val = ['Step']
+    for vv in q_net.trainable_variables:
+        val.append(vv.name)
+    val.append('Total')
+    return val
+
+def param_gradients(step, q_net, grads:list) -> None:
+    val = []
+    total_gr = 0.0
+
+    val.append(step)
+    for vv in q_net.trainable_variables:
+        val.append(np.linalg.norm(vv.numpy()))
+        total_gr += val[-1]**2
+    total_gr=total_gr**0.5
+    val.append(total_gr)
+    grads.append(val)
+
 #Set CTRL+C handler
 signal.signal(signal.SIGINT, handler)
 
@@ -444,9 +461,12 @@ reward_counter = 0.0
 loss_counter = 0.0
 
 loss_list = []
+grads = []
 
 episodes_trj = 0
 boundary_trj = 0
+
+param_gradients(0,q_net,grads)
 
 iterator = iter(replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=sequence_length))
 
@@ -468,7 +488,7 @@ for _ in range(num_iterations):
 
     reward_per_batch = (np.sum(trajectories.reward.numpy())/batch_size)
     reward_counter = reward_counter + reward_per_batch
-    
+
     loss_counter = loss_counter + train_loss.loss
 
     step = agent.train_step_counter.numpy()
@@ -480,6 +500,8 @@ for _ in range(num_iterations):
     #loss_list.append([step, train_loss.loss, reward_per_batch])
     if step > 0 and step % log_loss_interval == 0:
         loss_list.append([step, train_loss.loss])
+        param_gradients(step,q_net,grads)
+
 
     if step % log_interval == 0:
         print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4} Frames: {5}'.format(step, train_loss.loss, reward_per_batch, epsilon, (datetime.now()-tm_start).seconds, num_frames))
@@ -516,9 +538,12 @@ if ckpt:
 
 
 save_results(results_file, returns)
-save_info2cvs("loss.csv", loss_list, ["Idx", "Loss"])
+save_info2cvs("./data/loss.csv", loss_list, ["Step", "Loss"])
 
-save_parameters(tm_start, num_iterations, batch_size, target_update_tau, target_update_period, lrn_rate, gamma, epsilon, 
+prm_headrs = param_names(q_net)
+save_info2cvs("./data/pgradients.csv", grads, prm_headrs)
+
+save_parameters(tm_start, num_iterations, batch_size, target_update_tau, target_update_period, lrn_rate, gamma, epsilon,
                 gradient_clipping, sequence_length, refill_buffer_interval, num_initial_records, layer_sz, bias, dropout, returns)
 
 print("Training finished..... {}".format(datetime.now() - tm_start))
