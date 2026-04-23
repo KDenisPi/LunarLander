@@ -219,16 +219,46 @@ agent = dqn_agent.DqnAgent(
 agent.initialize()
 agent.train = common.function(agent.train)
 
-#print(q_net.trainable_variables)
-total_gr = 0.0
-grad = []
-for vv in q_net.trainable_variables:
-    n_par = np.linalg.norm(vv.numpy())
-    grad.append(n_par)
-    print("{} {:.4f} {:.4f}".format(vv.name, n_par**2, grad[-1]))
-    total_gr += grad[-1]**2
-total_gr=total_gr**0.5
+def param_names(q_net) -> list:
+    val = ['Step']
+    for vv in q_net.trainable_variables:
+        val.append(vv.name)
+    val.append('Total')
+    return val
 
-print("Total Gr: {:.4f}".format(total_gr))
-for p in grad:
-    print("{:.2f}%".format((p**0.5/total_gr)*100))
+def param_gradients(step, q_net, grads) -> None:
+    val = []
+    total_gr = 0.0
+
+    val.append(step)
+    for vv in q_net.trainable_variables:
+        val.append(np.linalg.norm(vv.numpy()))
+        total_gr += val[-1]**2
+    total_gr=total_gr**0.5
+    val.append(total_gr)
+    grads.append(val)
+
+def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
+    """
+    Docstring for save_info2cvs
+
+    :param filename: Description
+    :type filename: str
+    :param data: Description
+    :type data: list
+    :param headers: Description
+    :type headers: list
+    """
+    with open(csv_file, "w") as fd_write:
+        if headers:
+            fd_write.write(",".join(headers)+'\n')
+
+        for ln in data:
+            fd_write.write(",".join(["{:.3f}".format(l) for l in ln])+'\n')
+        fd_write.close()
+
+grads = []
+prm_headrs = param_names(q_net)
+param_gradients(1000, q_net, grads)
+save_info2cvs("./data/pgradients.csv", grads, prm_headrs)
+
