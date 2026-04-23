@@ -30,6 +30,7 @@ class Csv2ImageGenerator:
         self._data_file = in_file
         # Read CSV file
         self.df = pd.read_csv(self._data_file)
+        self._labels = self.df.columns
 
     @property
     def img_folder(self) -> str:
@@ -74,15 +75,18 @@ class Csv2ImageGenerator:
         :param img_file: Description
         :type img_file: str
         """
-        plt.xlabel('Ckpnt')
+        if len(labels)>0 :
+            self._labels = labels
+
+        plt.xlabel(self._labels[0])
         plt.grid(True)
 
-        x_data = self.df['Idx']
+        x_data = self.df[self._labels[0]]
         np_arr = np.asarray(self.df)
 
         for y_idx in range(1, len(np_arr[0]-1)):
             y_data = np_arr[:, y_idx]
-            label = labels[y_idx-1] if len(labels)>0 and y_idx-1 < len(labels) else "Val{}".format(y_idx)
+            label = self._labels[y_idx] if len(self._labels)>0 and y_idx < len(self._labels) else "Val{}".format(y_idx)
             plt.plot(x_data, y_data, label=label)
 
         plt.legend()
@@ -94,14 +98,24 @@ class Csv2ImageGenerator:
 if __name__ == '__main__':
     """Generate graph"""
     gen = Csv2ImageGenerator()
+    labels = []
+    img_file = ""
+
+    if len(sys.argv) == 1:
+        print("Missing CSV file.\nUsage csv2graph.py file.csv [--output=filename.png] [--labels=custon.csv]")
+        exit()
 
     csv_file = sys.argv[1]
-    labels = []
+    img_file = gen.csv2img_filename(csv_file)
 
-    if len(sys.argv) > 2:
-        """Load labels if it is presented"""
-        labels = gen.load_labels(sys.argv[2])
+    for pcmd in sys.argv[1:]:
+        prms = pcmd.split("=")
+        print(pcmd)
+        if prms[0] == "--labels":
+            """Load labels if it is presented"""
+            labels = gen.load_labels(prms[1])
+        if prms[0] == "--output":
+            img_file=prms[1]
 
     gen.data_file = csv_file
-    img_file = gen.csv2img_filename(sys.argv[1])
     gen.generate_img(img_file, labels)
