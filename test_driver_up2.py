@@ -27,8 +27,8 @@ from tf_agents.networks.layer_utils import print_summary
 
 tf.compat.v1.enable_v2_behavior()
 
-#env_name = 'LunarLander-v2' # @param {type:"string"}
-env_name='CartPole-v1'
+env_name = 'LunarLander-v2' # @param {type:"string"}
+#env_name='CartPole-v1'
 
 num_iterations = 80000 if env_name == 'LunarLander-v2' else 25000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
@@ -333,17 +333,93 @@ q_net = sequential.Sequential([input_lr] + layers + [q_values_layer], input_spec
 #(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
 #The probability of taking a random action, epsilon, typically decays over time. 
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate) #use lerning rate by default 0.001
+"""
+weight_decay	Float. If set, weight decay is applied.
+clipnorm	Float. If set, the gradient of each weight is individually clipped so that its norm is no higher than this value.
+clipvalue	Float. If set, the gradient of each weight is clipped to be no higher than this value.
+global_clipnorm	Float. If set, the gradient of all weights is clipped so that their global norm is no higher than this value.
+"""
+
+optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate, clipnorm=gradient_clipping)
 train_step_counter = tf.Variable(0)
 
-agent = dqn_agent.DqnAgent(
+"""
+        target_update_tau=target_update_tau,
+        target_update_period=target_update_period,
+        gradient_clipping=gradient_clipping,
+
+target_update_tau	Factor for soft update of the target networks.
+target_update_period	Period for soft update of the target networks.
+
+gradient_clipping	Norm length to clip gradients.
+gradient_clipping: Optional[types.Float] = None,
+
+target_update_tau=0.001 #0.005 #0.05	#Factor for soft update of the target networks.
+target_update_period=30 #10 #5 	        #Period for soft update of the target networks.
+gradient_clipping = 0.5
+
+tf.keras.optimizers.Adam
+weight_decay	Float. If set, weight decay is applied.
+clipnorm	Float. If set, the gradient of each weight is individually clipped so that its norm is no higher than this value.
+clipvalue	Float. If set, the gradient of each weight is clipped to be no higher than this value.
+global_clipnorm	Float. If set, the gradient of all weights is clipped so that their global norm is no higher than this value.
+
+Suggest:
+gradient_clipping=None #gradient_clipping,
+optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate,
+    clipnorm=gradient_clipping)
+
+"""
+
+#Step,
+# QNet/Input/kernel:0,
+# QNet/Input/bias:0,
+# QNet/LYR_0/kernel:0,
+# QNet/LYR_0/bias:0,
+# QNet/LYR_1/kernel:0,
+# QNet/LYR_1/bias:0,
+# QNet/Output/kernel:0,
+# QNet/Output/bias:0,
+# Total
+
+# Layers you want clipped — match by name prefix
+CLIP_LAYER_NAMES = ["LYR_"]   # hidden layers only; excludes "Input" and "Output"
+CLIP_NORM_VALUE  = gradient_clipping   # e.g. 0.2
+
+class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
+    """DQN agent that applies clipnorm only to selected layers."""
+
+    def _train(self, experience, weights=None):
+        """Override to apply per-layer gradient clipping."""
+        with tf.GradientTape() as tape:
+            loss_info = self._loss(experience, weights=weights, training=True)
+
+            variables = self._q_network.trainable_variables
+            gradients = tape.gradient(loss_info.loss, variables)
+
+            # Clip only the layers whose name starts with a target prefix
+            clipped_gradients = []
+            for grad, var in zip(gradients, variables):
+                if grad is None:
+                    clipped_gradients.append(grad)
+                elif any(lyr in var.name for lyr in CLIP_LAYER_NAMES):
+                    clipped_gradients.append(tf.clip_by_norm(grad, CLIP_NORM_VALUE))
+                else:
+                    clipped_gradients.append(grad)   # unclipped
+
+            self._optimizer.apply_gradients(zip(clipped_gradients, variables))
+            self.train_step_counter.assign_add(1)
+            return loss_info
+
+
+agent = SelectiveClipDqnAgent(
         train_env.time_step_spec(),
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
         target_update_tau=target_update_tau,
         target_update_period=target_update_period,
-        gradient_clipping=gradient_clipping,
+        gradient_clipping=None, #gradient_clipping,
         gamma=gamma,
         epsilon_greedy=epsilon_start,
         n_step_update=n_step_update,
