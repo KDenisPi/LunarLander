@@ -340,7 +340,7 @@ clipvalue	Float. If set, the gradient of each weight is clipped to be no higher 
 global_clipnorm	Float. If set, the gradient of all weights is clipped so that their global norm is no higher than this value.
 """
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate, clipnorm=gradient_clipping)
+optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate)
 train_step_counter = tf.Variable(0)
 
 """
