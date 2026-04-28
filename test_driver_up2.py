@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+#Important: Tensorflow version 2.15
+
 import os
 import sys
 import base64
@@ -30,7 +33,7 @@ tf.compat.v1.enable_v2_behavior()
 env_name = 'LunarLander-v2' # @param {type:"string"}
 #env_name='CartPole-v1'
 
-num_iterations = 80000 if env_name == 'LunarLander-v2' else 25000
+num_iterations = 100000 if env_name == 'LunarLander-v2' else 25000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
 num_initial_records = 15000 #if num_iterations <= 100000 else 5000 #1000
@@ -52,8 +55,8 @@ episode_for_checkpoint = eval_interval
 
 flush_interval = 0 #5000
 
-target_update_tau=0.001 #0.005 #0.05	    #Factor for soft update of the target networks.
-target_update_period=30 #10 #5 	    #Period for soft update of the target networks.
+target_update_tau=0.005 #0.005 #0.05	    #Factor for soft update of the target networks.
+target_update_period=20 #10 #5 	    #Period for soft update of the target networks.
 
 #layer_sz = [128, 128, 64]
 layer_sz = [128, 128] #[128, 256] #[128, 64]
@@ -93,8 +96,8 @@ gamma=0.99
 # Add these three lines instead:
 epsilon_start  = 1.0
 epsilon_end    = 0.05 #0.01
-epsilon_decay  = 0.00001 #0.00003 #0.0001 #0.00005  # controls how fast it falls
-gradient_clipping = 0.2 #0.5 #1.0
+epsilon_decay  = 0.00002 #0.00003 #0.0001 #0.00005  # controls how fast it falls
+gradient_clipping = 0.5 #0.5 #1.0
 
 sequence_length = 2 #3
 n_step_update = sequence_length - 1
@@ -270,15 +273,24 @@ def param_names(q_net) -> list:
     val.append('Total')
     return val
 
-def param_gradients(step, q_net, grads:list) -> None:
-    val = []
+def param_gradients(step, q_net, grads:list, agent=None) -> None:
+    val = [step]
     total_gr = 0.0
 
-    val.append(step)
-    for vv in q_net.trainable_variables:
-        val.append(np.linalg.norm(vv.numpy()))
-        total_gr += val[-1]**2
-    total_gr=total_gr**0.5
+    if agent is not None and agent._grad_norm_vars is not None:
+        # ✅ .numpy() works here — we are outside tf.function in eager mode
+        for norm_var in agent._grad_norm_vars:
+            norm = float(norm_var.numpy())
+            val.append(norm)
+            total_gr += norm ** 2
+    else:
+        # Fallback: weight norms (e.g. at step 0 before any training)
+        for vv in q_net.trainable_variables:
+            norm = float(np.linalg.norm(vv.numpy()))
+            val.append(norm)
+            total_gr += norm ** 2
+
+    total_gr = total_gr ** 0.5
     val.append(total_gr)
     grads.append(val)
 
@@ -388,16 +400,24 @@ CLIP_NORM_VALUE  = gradient_clipping   # e.g. 0.2
 
 class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
     """DQN agent that applies clipnorm only to selected layers."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._grad_norm_vars = None  # storage slot
+
+    def _ensure_grad_vars(self, gradients):
+        """Create tf.Variables to hold gradient norms, once shapes are known."""
+        if self._grad_norm_vars is None:
+            self._grad_norm_vars = [
+                tf.Variable(0.0, trainable=False, dtype=tf.float32, name=f"grad_norm_{i}") for i in range(len(gradients))
+            ]
 
     def _train(self, experience, weights=None):
-        """Override to apply per-layer gradient clipping."""
         with tf.GradientTape() as tape:
             loss_info = self._loss(experience, weights=weights, training=True)
 
             variables = self._q_network.trainable_variables
             gradients = tape.gradient(loss_info.loss, variables)
 
-            # Clip only the layers whose name starts with a target prefix
             clipped_gradients = []
             for grad, var in zip(gradients, variables):
                 if grad is None:
@@ -405,9 +425,19 @@ class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
                 elif any(lyr in var.name for lyr in CLIP_LAYER_NAMES):
                     clipped_gradients.append(tf.clip_by_norm(grad, CLIP_NORM_VALUE))
                 else:
-                    clipped_gradients.append(grad)   # unclipped
+                    clipped_gradients.append(grad)
 
             self._optimizer.apply_gradients(zip(clipped_gradients, variables))
+
+            # ✅ Ensure storage variables exist (only creates them once)
+            self._ensure_grad_vars(clipped_gradients)
+
+            # ✅ assign() is a graph op — runs on EVERY call, not just trace time
+            for i, grad in enumerate(clipped_gradients):
+                if grad is not None:
+                    self._grad_norm_vars[i].assign(tf.norm(grad))
+                else:
+                    self._grad_norm_vars[i].assign(0.0)
             self.train_step_counter.assign_add(1)
             return loss_info
 
@@ -576,7 +606,7 @@ for _ in range(num_iterations):
     #loss_list.append([step, train_loss.loss, reward_per_batch])
     if step > 0 and step % log_loss_interval == 0:
         loss_list.append([step, train_loss.loss])
-        param_gradients(step,q_net,grads)
+        param_gradients(step,q_net,grads,agent=agent)
 
 
     if step % log_interval == 0:
