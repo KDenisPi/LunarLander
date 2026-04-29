@@ -415,31 +415,31 @@ class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
         with tf.GradientTape() as tape:
             loss_info = self._loss(experience, weights=weights, training=True)
 
-            variables = self._q_network.trainable_variables
-            gradients = tape.gradient(loss_info.loss, variables)
+        variables = self._q_network.trainable_variables
+        gradients = tape.gradient(loss_info.loss, variables)
 
-            clipped_gradients = []
-            for grad, var in zip(gradients, variables):
-                if grad is None:
-                    clipped_gradients.append(grad)
-                elif any(lyr in var.name for lyr in CLIP_LAYER_NAMES):
-                    clipped_gradients.append(tf.clip_by_norm(grad, CLIP_NORM_VALUE))
-                else:
-                    clipped_gradients.append(grad)
+        clipped_gradients = []
+        for grad, var in zip(gradients, variables):
+            if grad is None:
+                clipped_gradients.append(grad)
+            elif any(lyr in var.name for lyr in CLIP_LAYER_NAMES):
+                clipped_gradients.append(tf.clip_by_norm(grad, CLIP_NORM_VALUE))
+            else:
+                clipped_gradients.append(grad)
 
-            self._optimizer.apply_gradients(zip(clipped_gradients, variables))
+        self._optimizer.apply_gradients(zip(clipped_gradients, variables))
 
-            # ✅ Ensure storage variables exist (only creates them once)
-            self._ensure_grad_vars(clipped_gradients)
+        # ✅ Ensure storage variables exist (only creates them once)
+        self._ensure_grad_vars(clipped_gradients)
 
-            # ✅ assign() is a graph op — runs on EVERY call, not just trace time
-            for i, grad in enumerate(clipped_gradients):
-                if grad is not None:
-                    self._grad_norm_vars[i].assign(tf.norm(grad))
-                else:
-                    self._grad_norm_vars[i].assign(0.0)
-            self.train_step_counter.assign_add(1)
-            return loss_info
+        # ✅ assign() is a graph op — runs on EVERY call, not just trace time
+        for i, grad in enumerate(clipped_gradients):
+            if grad is not None:
+                self._grad_norm_vars[i].assign(tf.norm(grad))
+            else:
+                self._grad_norm_vars[i].assign(0.0)
+        self.train_step_counter.assign_add(1)
+        return loss_info
 
 
 agent = SelectiveClipDqnAgent(
