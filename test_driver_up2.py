@@ -33,43 +33,90 @@ tf.compat.v1.enable_v2_behavior()
 env_name = 'LunarLander-v2' # @param {type:"string"}
 #env_name='CartPole-v1'
 
-num_iterations = 200000 if env_name == 'LunarLander-v2' else 25000
-collect_episodes_per_iteration = 2 # @param {type:"integer"}
-replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
-num_initial_records = 15000 #if num_iterations <= 100000 else 5000 #1000
-refill_buffer_interval=0
+#max number of iterations
+num_iterations = 160000 if env_name == 'LunarLander-v2' else 25000
+#number collected episodes per iteration
+collect_episodes_per_iteration = 2
+#replay buffer capacity
+replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000
+#number initially generated records in reply buffer
+num_initial_records = 15000
 
-batch_size = 256 # 256 #256
-
+#training batch size
+batch_size = 256
+#generate by one tragectory each request
 train_driver_max_step=1
 
-num_eval_episodes = 10 # @param {type:"integer"}
+#number evaluetion epiodes
+num_eval_episodes = 10
+sequence_length = 2
+n_step_update = sequence_length - 1
 
-eval_interval = 20000 # 100 @param {type:"integer"}
-log_interval = 5000 # 50 @param {type:"integer"}
+
+#Intervals
+eval_interval = 20000 # Evaluation intervall
+log_interval = 5000 # Print output information each n step
 log_loss_interval = log_interval
 
 #checkpoints
-ckpt_max_to_keep = 20
-episode_for_checkpoint = eval_interval
+ckpt_max_to_keep = 20   #max number of checkpoints
+episode_for_checkpoint = eval_interval  #recored checkpoint each b steps
 
-flush_interval = 0 #5000
+#Factor for soft update of the target networks.
+target_update_tau=0.001
+#Period for soft update of the target networks.
+target_update_period=10
 
-target_update_tau=0.001 #0.005 #0.05	    #Factor for soft update of the target networks.
-target_update_period=10 #10 #5 	    #Period for soft update of the target networks.
+#layers size
+layer_sz = [128, 128]
 
-layer_sz = [128, 128] #[128, 256] #[128, 64]
+#
+#Important parameters
+#
+#lerning rate - Adam optimizer parameter (0.001 - 0.0001)
+lrn_rate=0.00002
+#The discount factor (γ) of future rewards - gamma (0.9-1.0)
+gamma=0.99
+#Epsilon-Greedy Exploration: A strategy used during training to balance exploration
+#(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
+#The probability of taking a random action, epsilon, typically decays over time. 
+epsilon_start  = 1.0
+epsilon_end    = 0.02
+# controls how fast it falls
+epsilon_decay  = 0.00002
+#Geometrically, this constrains the gradient to lie within a hypersphere of radius τ
+#centered at the origin. In 2D, this is a circle; in 3D, a sphere.
+# Any gradient landing outside this sphere gets projected back onto its surface by scaling, not by truncating individual components.
+gradient_clipping = 0.5
+
+#Step,
+# QNet/Input/kernel:0,
+# QNet/Input/bias:0,
+# QNet/LYR_0/kernel:0,
+# QNet/LYR_0/bias:0,
+# QNet/LYR_1/kernel:0,
+# QNet/LYR_1/bias:0,
+# QNet/Output/kernel:0,
+# QNet/Output/bias:0,
+# Total
+
+# Layers you want clipped — match by name prefix
+CLIP_LAYER_NAMES = ["LYR_"]   # hidden layers only; excludes "Input" and "Output"
+CLIP_NORM_VALUE  = gradient_clipping   # e.g. 0.2
 
 #In reinforcement learning (RL) and analysis, bias refers to
 #the systematic error or difference between an agent’s predicted value (reward) and the true, actual value.
 #High bias means the model makes overly simplified assumptions, failing to capture the true reward structure,
 #which can cause the agent to learn incorrect or sub-optimal policies.
 
-bias = [tf.keras.initializers.Constant(0.0)] * len(layer_sz) #-0.2
-dropout = [0.0] * len(layer_sz) if env_name=='LunarLander-v2' else [0.0] * len(layer_sz)
-
-
+#bias initialization
+bias = [tf.keras.initializers.Constant(0.0)] * len(layer_sz)
+#dropout layers initialization
+dropout = [0.0] * len(layer_sz)
+#Output layes bias initialization
 bias_lyr_out = tf.keras.initializers.Constant(0)
+
+kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03)
 
 kernel_init = [
             tf.keras.initializers.VarianceScaling(
@@ -77,28 +124,7 @@ kernel_init = [
                 mode='fan_in',
                 distribution='truncated_normal')] * len(layer_sz)
 
-kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03)
 
-#
-#Important parameters
-# lerning rate - Adam optimizer parameter (0.001 - 0.0001)
-# the discount factor (γ) of future rewards - gamma (0.9-1.0)
-#
-#Epsilon-Greedy Exploration: A strategy used during training to balance exploration
-#(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
-#The probability of taking a random action, epsilon, typically decays over time. 
-#
-lrn_rate=0.00002 #0.0001
-gamma=0.99
-
-# Add these three lines instead:
-epsilon_start  = 1.0
-epsilon_end    = 0.02 #0.05
-epsilon_decay  = 0.00002 #0.00003 #0.0001 #0.00005  # controls how fast it falls
-gradient_clipping = 0.5 #0.5 #1.0
-
-sequence_length = 2 #3
-n_step_update = sequence_length - 1
 
 ckpt_restored=False
 evaluate_chkpoint=None
@@ -107,7 +133,7 @@ for cmd in sys.argv:
         evaluate_chkpoint = cmd
         break
 
-run_idx = "up_16"
+run_idx = "up_01"
 if len(sys.argv) >= 2:
     run_idx = sys.argv[1]
 
@@ -116,9 +142,6 @@ results_file = './data/results_{}.dat'.format(run_idx)
 
 result_actions_file = "./data/actions_{}.csv".format(run_idx)
 result_info_file = "./data/actions_{}.csv".format(run_idx)
-
-state_headers = ['Idx','X','Y','Vx','Vy','Angle','Va','LegL','LegR']
-info_headers = ['Idx','Reward','Action','Last']
 
 finish_train = False
 
@@ -147,13 +170,10 @@ def read_results(filename:str) -> list:
 
 def collect_episode(environment, num_episodes=None, agent=None, num_steps=0, time_step=None) -> any:
     """Collect data for episode"""
-    #print('Use policy: {}'.format("Agent" if agent else "Rendom"))
-
     collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True) if agent \
         else random_py_policy.RandomPyPolicy(environment.time_step_spec(), environment.action_spec())
 
     initial_time_step = time_step if time_step else environment.reset()
-    #print("First step: first {} last {}".format(initial_time_step.is_first(), initial_time_step.is_last()))
 
     driver = py_driver.PyDriver(
         env=environment,
@@ -165,13 +185,9 @@ def collect_episode(environment, num_episodes=None, agent=None, num_steps=0, tim
 
     last_time_step, policy_state = driver.run(initial_time_step)
     return last_time_step
-    #print("Last step: {} Policy: {}".format(last_time_step, policy_state))
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
-    #print("Started compute_avg_return")
-    #print(tf.keras.backend.learning_phase())
-
     total_return = 0.0
     for eps in range(num_episodes):
         time_step = environment.reset()
@@ -238,7 +254,6 @@ def create_layer(idx, lyr_size, lyr_bias, lyr_kernel, lyr_dropout) -> list:
 
 
 def tensor_size(tnsr:any) -> any:
-    #print("Size: {} {}".format(tnsr.shape.as_list(), len(tnsr.shape.as_list())))
     if len(tnsr.shape.as_list()) == 0:
         max_min = tnsr.maximum[()] - tnsr.minimum[()]
         return max_min+1
@@ -247,22 +262,22 @@ def tensor_size(tnsr:any) -> any:
 
     return tnsr.shape[0]*tnsr.shape[1]
 
-def save_parameters(StTime, NumIter, BatchSize, UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, Layrs, Bias, DrpOut, results) -> None:
+
+def save_parameters(StTime, params:list, Layrs:list) -> None:
     filename = "./data/parameters.csv"
-    headers=['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Epsilon', 'GradClip', 'RefillIntr', 'InitRecords', 'Layrs']
+    headers=['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords', 'Layrs']
 
     if os.path.exists(filename):
         headers = None
 
     with open(filename, 'a') as file:
         if headers:
-            file.write(",".join(headers)+'\n')
-        file.write("{},{},{},{},{},{},{},{},{:0.2f},{},{},{},{},{},".format(datetime.now(), (datetime.now() - StTime), NumIter, BatchSize,
-                        UpTau, UpPrd, LrnRate, Gamma, Epsilon, GradClip, SeqLen, RefillIntr, InitRecs, len(Layrs)))
-        file.write(",".join(["{}".format(lr) for lr in Layrs])+',')
-        file.write(",".join(["{:0.2f}".format(bs.get_config()['value']) for bs in Bias])+',')
-        file.write(",".join(["{:0.2f}".format(drpout) for drpout in DrpOut])+',')
-        file.write(",".join(["{:0.2f}".format(res) for res in results])+'\n')
+            file.write(",".join(headers)+',')
+            file.write(",".join(["LYR_{}".format(lr) for lr, _ in enumerate(Layrs)])+'\n')
+
+        file.write("{},{},".format(datetime.now(), (datetime.now() - StTime)))
+        file.write(",".join(["{:0.5f}".format(prm) for prm in params])+',')
+        file.write(",".join(["{}".format(lr) for lr in Layrs])+'\n')
 
 def param_names(q_net) -> list:
     val = ['Step']
@@ -276,7 +291,7 @@ def param_gradients(step, q_net, grads:list, agent=None) -> None:
     total_gr = 0.0
 
     if agent is not None and agent._grad_norm_vars is not None:
-        # ✅ .numpy() works here — we are outside tf.function in eager mode
+        # .numpy() works here — we are outside tf.function in eager mode
         for norm_var in agent._grad_norm_vars:
             norm = float(norm_var.numpy())
             val.append(norm)
@@ -307,11 +322,11 @@ eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 num_actions = tensor_size(train_env.action_spec())
 observations = tensor_size(train_env.time_step_spec().observation)
 
-print("Action: {}".format(num_actions))
-print("Observations: {}".format(observations))
+#print("Action: {}".format(num_actions))
+#print("Observations: {}".format(observations))
 
-print('Time Step Spec: {}'.format(train_env.action_spec()))
-print('Time Step Spec: {}'.format(train_env.time_step_spec()))
+#print('Action Spec: {}'.format(train_env.action_spec()))
+#print('Time Step Spec: {}'.format(train_env.time_step_spec()))
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
@@ -334,67 +349,9 @@ q_values_layer = Dense(
 
 q_net = sequential.Sequential([input_lr] + layers + [q_values_layer], input_spec=train_env.time_step_spec().observation, name="QNet")
 
-#
-#Important parameters
-# lerning rate - Adam optimizer parameter (0.001 - 0.0001)
-# the discount factor (γ) of future rewards - gamma (0.9-1.0)
-#
-#Epsilon-Greedy Exploration: A strategy used during training to balance exploration
-#(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
-#The probability of taking a random action, epsilon, typically decays over time. 
-
-"""
-weight_decay	Float. If set, weight decay is applied.
-clipnorm	Float. If set, the gradient of each weight is individually clipped so that its norm is no higher than this value.
-clipvalue	Float. If set, the gradient of each weight is clipped to be no higher than this value.
-global_clipnorm	Float. If set, the gradient of all weights is clipped so that their global norm is no higher than this value.
-"""
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate)
 train_step_counter = tf.Variable(0)
-
-"""
-        target_update_tau=target_update_tau,
-        target_update_period=target_update_period,
-        gradient_clipping=gradient_clipping,
-
-target_update_tau	Factor for soft update of the target networks.
-target_update_period	Period for soft update of the target networks.
-
-gradient_clipping	Norm length to clip gradients.
-gradient_clipping: Optional[types.Float] = None,
-
-target_update_tau=0.001 #0.005 #0.05	#Factor for soft update of the target networks.
-target_update_period=30 #10 #5 	        #Period for soft update of the target networks.
-gradient_clipping = 0.5
-
-tf.keras.optimizers.Adam
-weight_decay	Float. If set, weight decay is applied.
-clipnorm	Float. If set, the gradient of each weight is individually clipped so that its norm is no higher than this value.
-clipvalue	Float. If set, the gradient of each weight is clipped to be no higher than this value.
-global_clipnorm	Float. If set, the gradient of all weights is clipped so that their global norm is no higher than this value.
-
-Suggest:
-gradient_clipping=None #gradient_clipping,
-optimizer = tf.keras.optimizers.Adam(learning_rate=lrn_rate,
-    clipnorm=gradient_clipping)
-
-"""
-
-#Step,
-# QNet/Input/kernel:0,
-# QNet/Input/bias:0,
-# QNet/LYR_0/kernel:0,
-# QNet/LYR_0/bias:0,
-# QNet/LYR_1/kernel:0,
-# QNet/LYR_1/bias:0,
-# QNet/Output/kernel:0,
-# QNet/Output/bias:0,
-# Total
-
-# Layers you want clipped — match by name prefix
-CLIP_LAYER_NAMES = ["LYR_"]   # hidden layers only; excludes "Input" and "Output"
-CLIP_NORM_VALUE  = gradient_clipping   # e.g. 0.2
 
 class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
     """DQN agent that applies clipnorm only to selected layers."""
@@ -427,10 +384,10 @@ class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
 
         self._optimizer.apply_gradients(zip(clipped_gradients, variables))
 
-        # ✅ Ensure storage variables exist (only creates them once)
+        # Ensure storage variables exist (only creates them once)
         self._ensure_grad_vars(clipped_gradients)
 
-        # ✅ assign() is a graph op — runs on EVERY call, not just trace time
+        # assign() is a graph op — runs on EVERY call, not just trace time
         for i, grad in enumerate(clipped_gradients):
             if grad is not None:
                 self._grad_norm_vars[i].assign(tf.norm(grad))
@@ -535,8 +492,6 @@ print("Start training.....")
 print_summary(q_net)
 
 train_collect_policy = py_tf_eager_policy.PyTFEagerPolicy(agent.collect_policy, use_tf_function=True)
-#train_collect_policy = random_py_policy.RandomPyPolicy(train_py_env.time_step_spec(), train_py_env.action_spec())
-
 train_driver = py_driver.PyDriver(
     env=train_py_env,
     policy=train_collect_policy,
@@ -609,12 +564,6 @@ for _ in range(num_iterations):
 
     if step % log_interval == 0:
         print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4} Frames: {5}'.format(step, train_loss.loss, reward_per_batch, epsilon, (datetime.now()-tm_start).seconds, num_frames))
-        #if step > 0:
-        #    print('step = {0}: Avg.Loss = {1:0.3f} Avg.Reward: {2:0.3f} Sec. {3}'.format(
-        #        step, loss_counter/(step-f_step), reward_counter/(step-f_step), (datetime.now()-tm_start).seconds))
-
-    if flush_interval > 0 and step % flush_interval == 0:
-        rb_observer.flush()
 
     if step > 0 and step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
@@ -638,8 +587,6 @@ if ckpt:
     ckpt.step.assign_add(1)
     sv_folder = ckpt_manager.save()
     print("Saved checkpoint for step {}: {}".format(int(ckpt.step), sv_folder))
-    #ckpt.save(global_step=train_step_counter)
-
 
 save_results(results_file, returns)
 save_info2cvs("./data/loss.csv", loss_list, ["Step", "Loss"])
@@ -647,8 +594,12 @@ save_info2cvs("./data/loss.csv", loss_list, ["Step", "Loss"])
 prm_headrs = param_names(q_net)
 save_info2cvs("./data/pgradients.csv", grads, prm_headrs)
 
-save_parameters(tm_start, num_iterations, batch_size, target_update_tau, target_update_period, lrn_rate, gamma, epsilon,
-                gradient_clipping, sequence_length, refill_buffer_interval, num_initial_records, layer_sz, bias, dropout, returns)
+#['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords', 'Layrs']
+
+save_parameters(tm_start, [num_iterations, batch_size, target_update_tau, target_update_period, lrn_rate, gamma,
+                epsilon_start, epsilon_end, epsilon_decay,
+                gradient_clipping, num_initial_records],
+                layer_sz)
 
 print("Training finished..... {}".format(datetime.now() - tm_start))
 print(returns)
