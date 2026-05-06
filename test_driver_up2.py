@@ -33,7 +33,7 @@ tf.compat.v1.enable_v2_behavior()
 env_name = 'LunarLander-v2' # @param {type:"string"}
 #env_name='CartPole-v1'
 
-num_iterations = 100000 if env_name == 'LunarLander-v2' else 25000
+num_iterations = 200000 if env_name == 'LunarLander-v2' else 25000
 collect_episodes_per_iteration = 2 # @param {type:"integer"}
 replay_buffer_capacity = num_iterations*2 if num_iterations <= 120000 else num_iterations + 50000 # @param {type:"integer"}
 num_initial_records = 15000 #if num_iterations <= 100000 else 5000 #1000
@@ -55,10 +55,9 @@ episode_for_checkpoint = eval_interval
 
 flush_interval = 0 #5000
 
-target_update_tau=0.005 #0.005 #0.05	    #Factor for soft update of the target networks.
-target_update_period=20 #10 #5 	    #Period for soft update of the target networks.
+target_update_tau=0.001 #0.005 #0.05	    #Factor for soft update of the target networks.
+target_update_period=10 #10 #5 	    #Period for soft update of the target networks.
 
-#layer_sz = [128, 128, 64]
 layer_sz = [128, 128] #[128, 256] #[128, 64]
 
 #In reinforcement learning (RL) and analysis, bias refers to
@@ -68,7 +67,6 @@ layer_sz = [128, 128] #[128, 256] #[128, 64]
 
 bias = [tf.keras.initializers.Constant(0.0)] * len(layer_sz) #-0.2
 dropout = [0.0] * len(layer_sz) if env_name=='LunarLander-v2' else [0.0] * len(layer_sz)
-#dropout[-1] = 0.5
 
 
 bias_lyr_out = tf.keras.initializers.Constant(0)
@@ -90,12 +88,12 @@ kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0
 #(taking random actions to discover new possibilities) and exploitation (taking the action with the highest predicted Q-value).
 #The probability of taking a random action, epsilon, typically decays over time. 
 #
-lrn_rate=0.00005 #0.0001
+lrn_rate=0.00002 #0.0001
 gamma=0.99
 
 # Add these three lines instead:
 epsilon_start  = 1.0
-epsilon_end    = 0.05 #0.01
+epsilon_end    = 0.02 #0.05
 epsilon_decay  = 0.00002 #0.00003 #0.0001 #0.00005  # controls how fast it falls
 gradient_clipping = 0.5 #0.5 #1.0
 
