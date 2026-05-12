@@ -65,7 +65,7 @@ episode_for_checkpoint = eval_interval  #recored checkpoint each b steps
 #Factor for soft update of the target networks.
 target_update_tau=0.001
 #Period for soft update of the target networks.
-target_update_period=10
+target_update_period=15
 
 #layers size
 layer_sz = [128, 128]
