@@ -6,6 +6,7 @@ import os
 from os import replace
 import sys
 from math import sqrt
+import glob
 
 import numpy as np
 import pandas as pd
@@ -105,8 +106,9 @@ if __name__ == '__main__':
         print("Missing CSV file.\nUsage csv2graph.py file.csv [--output=filename.png] [--labels=custon.csv]")
         exit()
 
-    csv_file = sys.argv[1]
-    img_file = gen.csv2img_filename(csv_file)
+    csv_files = glob.glob(sys.argv[1])
+
+    img_file_custom = ""
 
     for pcmd in sys.argv[1:]:
         prms = pcmd.split("=")
@@ -114,8 +116,12 @@ if __name__ == '__main__':
         if prms[0] == "--labels":
             """Load labels if it is presented"""
             labels = gen.load_labels(prms[1])
-        if prms[0] == "--output":
-            img_file=prms[1]
+        #do not select name for multiple files
+        if prms[0] == "--output" and len(csv_files)==1:
+            img_file_custom=prms[1]
 
-    gen.data_file = csv_file
-    gen.generate_img(img_file, labels)
+    for csv_file in csv_files:
+        img_file = img_file_custom if len(img_file_custom)>0 else gen.csv2img_filename(csv_file)
+
+        gen.data_file = csv_file
+        gen.generate_img(img_file, labels)
