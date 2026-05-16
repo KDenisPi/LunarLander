@@ -73,11 +73,14 @@ class ModelCfg(object):
 
         # Layers you want clipped — match by name prefix
         # hidden layers only; excludes "Input" and "Output"
-        self._clip_layer_names = ["LYR_"]   
+        self._clip_layer_names = ["LYR_"]
 
         #Output layes bias initialization
         self._bias_lyr_out = tf.keras.initializers.Constant(0)
         self._kernel_init_lyr_out = tf.keras.initializers.RandomUniform(minval=-0.03, maxval=0.03)
+
+        #['VarianceScaling', 'GlorotNormal', 'GlorotUniform']
+        self._kernel_init_type = 'VarianceScaling'
 
         self._data_folder = './data/'
         self._data_idx = "ll_01"
@@ -100,11 +103,37 @@ class ModelCfg(object):
         #dropout layers initialization
         self._dropout = [0.0] * len(self.layer_sz)
 
+        """
         self._kernel_init = [
                     tf.keras.initializers.VarianceScaling(
                         scale=1.0,
                         mode='fan_in',
-                        distribution='truncated_normal')] * len(self.layer_sz)
+                        distribution='truncated_normal')
+                ] * len(self.layer_sz)
+        """
+
+        #Change layer intialization
+        #Also need try
+        #GlorotUniform
+        #GlorotNormal
+        self._kernel_init = []
+        for k in range(len(self.layer_sz)):
+            if self.self._kernel_init_type == 'VarianceScaling':
+                self._kernel_init.append(
+                    tf.keras.initializers.VarianceScaling(
+                        scale=1.0,
+                        mode='fan_in',
+                        distribution='truncated_normal')
+                )
+            elif self.self._kernel_init_type == 'GlorotUniform':
+                self._kernel_init.append(
+                    tf.keras.initializers.GlorotUniform()
+                )
+            elif self.self._kernel_init_type == 'GlorotNormal':
+                self._kernel_init.append(
+                    tf.keras.initializers.GlorotNormal()
+                )
+
 
     @property
     def checkpoint_dir(self) -> str:
@@ -129,12 +158,12 @@ class ModelCfg(object):
     @property
     def data_folder(self) -> str:
         return self._data_folder
-    
+
     @data_folder.setter
     def data_folder(self, didx:str) -> str:
         self._data_folder = didx
         self._init_out_files()
-    
+
     @property
     def data_idx(self) -> str:
         return self._data_idx
@@ -165,13 +194,22 @@ class ModelCfg(object):
         return self._kernel_init
 
     @property
+    def kernel_init_type(self) -> str:
+        return self._kernel_init_type
+
+    @_kernel_init_type.setter
+    def _kernel_init_type(self, val:list) -> None:
+        self._kernel_init_type = val if val in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform'] else 'VarianceScaling'
+        self._init_layer_depends()
+
+    @property
     def clip_layer_names(self) -> list:
         return self._clip_layer_names
 
     @property
     def layer_sz(self) -> list:
         return self._layer_sz
-    
+
     @layer_sz.setter
     def layer_sz(self, val:list) -> None:
         self._layer_sz = val
@@ -212,7 +250,7 @@ class ModelCfg(object):
     @property
     def collect_episode_per_iteration(self) -> int:
         return self._collect_episode_per_iteration
-    
+
     @property
     def replay_buffer_capacity(self) -> int:
         return self._replay_buffer_capacity
