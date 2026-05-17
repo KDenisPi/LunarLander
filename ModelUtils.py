@@ -15,9 +15,9 @@ def tensor_size(tnsr:any) -> any:
     return tnsr.shape[0]*tnsr.shape[1]
 
 
-def save_parameters(StTime, params:list, Layrs:list, Clip_layer_names:list) -> None:
+def save_parameters(StTime, Name:str, params:list, Layrs:list, Clip_layer_names:list) -> None:
     filename = "./data/parameters.csv"
-    headers=['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords']
+    headers=['Date', 'Name', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords']
 
     if os.path.exists(filename):
         headers = None
@@ -27,7 +27,7 @@ def save_parameters(StTime, params:list, Layrs:list, Clip_layer_names:list) -> N
             file.write(",".join(headers)+',')
             file.write(",".join(["LYR_{}".format(lr) for lr, _ in enumerate(Layrs)])+'\n')
 
-        file.write("{},{},".format(datetime.now(), (datetime.now() - StTime)))
+        file.write("{},{},{},".format(datetime.now(), Name, (datetime.now() - StTime)))
         file.write(",".join(["{:0.5f}".format(prm) for prm in params])+',')
         file.write(",".join(["{}".format(lr) for lr in Layrs]))
         file.write("," + str(Clip_layer_names)+'\n')
@@ -92,3 +92,20 @@ def save_info2list(csv_file:str, data:list, name:str) -> None:
     """
     with open(csv_file, "a") as fd_write:
         fd_write.write(name + "," + str(data) +'\n')
+
+def read_list2info(csv_file:str) -> list:
+    results = []
+    with open(csv_file, "r") as fd_read:
+        results = fd_read.readlines()
+    return results
+
+def info2n_list(data:list) -> list:
+    result = []
+    for ln in data:
+        vals = ln.strip().replace('[','').replace(']','').split(',')
+        name = vals[0]
+        result.append([name] + [float(x) for x in vals[1:]])
+    return result
+
+
+

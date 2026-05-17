@@ -47,9 +47,6 @@ class ModelCfg(object):
         #Period for soft update of the target networks.
         self._target_update_period=15
 
-        #layers size
-        self.layer_sz = [128, 128]
-
         #
         #Important parameters
         #
@@ -82,9 +79,11 @@ class ModelCfg(object):
         #['VarianceScaling', 'GlorotNormal', 'GlorotUniform']
         self._kernel_init_type = 'VarianceScaling'
 
+        #layers size
+        self.layer_sz = [128, 128]
+
         self._data_folder = './data/'
         self._data_idx = "ll_01"
-
 
     def _init_out_files(self) -> None:
         self._checkpoint_dir = self.data_folder + 'multi_checkpoint_{}'.format(self.data_idx)
@@ -118,18 +117,18 @@ class ModelCfg(object):
         #GlorotNormal
         self._kernel_init = []
         for k in range(len(self.layer_sz)):
-            if self.self._kernel_init_type == 'VarianceScaling':
+            if self.kernel_init_type == 'VarianceScaling':
                 self._kernel_init.append(
                     tf.keras.initializers.VarianceScaling(
                         scale=1.0,
                         mode='fan_in',
                         distribution='truncated_normal')
                 )
-            elif self.self._kernel_init_type == 'GlorotUniform':
+            elif self.kernel_init_type == 'GlorotUniform':
                 self._kernel_init.append(
                     tf.keras.initializers.GlorotUniform()
                 )
-            elif self.self._kernel_init_type == 'GlorotNormal':
+            elif self.kernel_init_type == 'GlorotNormal':
                 self._kernel_init.append(
                     tf.keras.initializers.GlorotNormal()
                 )
@@ -197,8 +196,8 @@ class ModelCfg(object):
     def kernel_init_type(self) -> str:
         return self._kernel_init_type
 
-    @_kernel_init_type.setter
-    def _kernel_init_type(self, val:list) -> None:
+    @kernel_init_type.setter
+    def kernel_init_type(self, val:str) -> None:
         self._kernel_init_type = val if val in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform'] else 'VarianceScaling'
         self._init_layer_depends()
 

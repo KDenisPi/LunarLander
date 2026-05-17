@@ -47,7 +47,7 @@ class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
     @property
     def clip_norm_value(self) -> float:
         return self._clip_norm_value
-    
+
     @clip_norm_value.setter
     def clip_norm_value(self, ln_val:float) -> None:
         self._clip_norm_value = ln_val
@@ -417,9 +417,9 @@ class ModelTrain(object):
 
         mutils.save_info2list(self._mcfg.all_results_file, returns, name=self._mcfg.data_idx)
 
-        #['Date', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords']
+        #['Date', 'Name', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords']
 
-        mutils.save_parameters(tm_start, [self._mcfg.num_iterations, self._mcfg.batch_size, self._mcfg.target_update_tau, 
+        mutils.save_parameters(tm_start, self._mcfg.data_idx, [self._mcfg.num_iterations, self._mcfg.batch_size, self._mcfg.target_update_tau, 
                         self._mcfg.target_update_period, self._mcfg.lrn_rate, self._mcfg.gamma,
                         self._mcfg.epsilon_start, self._mcfg.epsilon_end, self._mcfg.epsilon_decay,
                         self._mcfg.gradient_clipping, self._mcfg.num_initial_records],
@@ -434,7 +434,7 @@ if __name__ == '__main__':
     cfg = ModelCfg()
 
     attempt = 1
-
+    """
     for eps_decay in [0.00001, 0.00002, 0.00003]:
         for grad_clip_names in [["LYR_"], ["LYR_", "Input"], ["LYR_", "Output"], ["LYR_", "Input", "Output"]]:
             for grad_val in [0.4, 0.5, 0.6]:
@@ -448,5 +448,42 @@ if __name__ == '__main__':
                 mdl.initialise()
                 mdl.train()
                 attempt += 1
+    """
+
+    """
+    for lrn_rate in [0.00001, 0.00002, 0.00003, 0.0001]:
+        for grad_clip_names in [["LYR_"], ["LYR_", "Output"]]:
+            for target_update_tau in [0.01, 0.02, 0.03]:
+                for target_update_period in [10, 15, 20]:
+                    lbl = "LL_{}".format(attempt+40)
+                    cfg.data_idx = lbl
+                    cfg._epsilon_decay = 0.00002
+                    cfg._clip_layer_names = grad_clip_names
+                    cfg._gradient_clipping = 0.5
+                    cfg._target_update_tau = target_update_tau
+                    cfg._target_update_period = target_update_period
+
+                    mdl = ModelTrain(cfg=cfg)
+                    mdl.initialise()
+                    mdl.train()
+                    attempt += 1
+    """
+    for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
+        for lrn_rate in [0.00001, 0.00002, 0.00003, 0.0001]:
+            lbl = "LL_{}".format(attempt+120)
+            cfg.data_idx = lbl
+            cfg._epsilon_decay = 0.00002
+            cfg._clip_layer_names = ["LYR_"]
+            cfg._gradient_clipping = 0.5
+            cfg._target_update_tau = 0.01
+            cfg._target_update_period = 10
+            cfg.kernel_init_type = kernel_init_type
+            cfg._lrn_rate = lrn_rate
+
+            mdl = ModelTrain(cfg=cfg)
+            mdl.initialise()
+            mdl.train()
+            attempt += 1
+
 
 
