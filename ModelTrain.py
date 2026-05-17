@@ -417,12 +417,12 @@ class ModelTrain(object):
 
         mutils.save_info2list(self._mcfg.all_results_file, returns, name=self._mcfg.data_idx)
 
-        #['Date', 'Name', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords']
+        #['Date', 'Name', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords', 'KernelInitType']
 
         mutils.save_parameters(tm_start, self._mcfg.data_idx, [self._mcfg.num_iterations, self._mcfg.batch_size, self._mcfg.target_update_tau, 
                         self._mcfg.target_update_period, self._mcfg.lrn_rate, self._mcfg.gamma,
                         self._mcfg.epsilon_start, self._mcfg.epsilon_end, self._mcfg.epsilon_decay,
-                        self._mcfg.gradient_clipping, self._mcfg.num_initial_records],
+                        self._mcfg.gradient_clipping, self._mcfg.num_initial_records, self._mcfg.kernel_init_type],
                         self._mcfg.layer_sz, 
                         self._mcfg.clip_layer_names)
 
