@@ -85,6 +85,9 @@ class ModelCfg(object):
         self._data_folder = './data/'
         self._data_idx = "ll_01"
 
+        self._evaluate_chkpoint = ''
+
+
     def _init_out_files(self) -> None:
         self._checkpoint_dir = self.data_folder + 'multi_checkpoint_{}'.format(self.data_idx)
         self._results_file = self.data_folder+'results_{}.csv'.format(self.data_idx)
@@ -304,3 +307,14 @@ class ModelCfg(object):
     @property
     def target_update_period(self) -> int:
         return self._target_update_period
+    
+    @property
+    def evaluate_chkpoint(self) -> str:
+        return self._evaluate_chkpoint
+    
+    @evaluate_chkpoint.setter
+    def evaluate_chkpoint(self, val:str) -> None:
+        self._evaluate_chkpoint = val
+
+    def if_evaluate_chkpoint(self) -> bool:
+        return len(self._evaluate_chkpoint)>0

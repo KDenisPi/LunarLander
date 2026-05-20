@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import signal
 from datetime import datetime
 
@@ -128,13 +129,15 @@ class ModelTrain(object):
         self.ckpt = None
         self.ckpt_manager = None
         self.ckpt_restored=False
-        #evaluate_chkpoint=None
-
+        
         self._debug = False
 
     @property
     def debug(self) -> bool:
         return self._debug
+    @debug.setter
+    def debug(self, val:bool) -> None:
+        self._debug = val        
 
     def initialise(self) -> None:
         self.init_qnet()
@@ -305,7 +308,38 @@ class ModelTrain(object):
             if self.debug:
                 print("Loaded checkpoint from: {} Step: {} Save counter: {}".format(self._mcfg.checkpoint_dir, self.train_step_counter.numpy(), self.ckpt.save_counter.numpy()))
 
+    def evaluate(self) -> None:
+        print("Start evaluation.....")
+
+        tm_start = datetime.now()
+        self.debug = True
+
+        if self._mcfg.if_evaluate_chkpoint:
+            evt_ckpnt = "{}/{}".format(self._mcfg.checkpoint_dir, self._mcfg.evaluate_chkpoint)
+            print(evt_ckpnt)
+            ckpt_mng_last = evt_ckpnt if evt_ckpnt in self.ckpt_manager.checkpoints else self.ckpt_manager.latest_checkpoint
+
+            print("Available checkpoints: {}".format(self.ckpt_manager.checkpoints))
+            if ckpt_mng_last is None:
+                print("No available checkpoints. Stop eveluation.")
+                return
+
+            print("Restore Ckpt from: {}".format(ckpt_mng_last))
+            self.ckpt.restore(ckpt_mng_last).expect_partial()
+
+            eval_result = []
+            for _ in range(3):
+                eval_result.append(self.compute_avg_return(self._eval_env, self.agent.policy, self._mcfg.num_eval_episodes))
+                print(eval_result)
+
+        print("Evaluation finished..... {}".format(datetime.now() - tm_start))
+
+
     def train(self) -> None:
+        if self._mcfg.if_evaluate_chkpoint:
+            self.evaluate()
+            return
+
         print("Start training.....")
 
         if self.debug:
@@ -468,6 +502,7 @@ if __name__ == '__main__':
                     mdl.train()
                     attempt += 1
     """
+    """
     for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
         for lrn_rate in [0.00001, 0.00002, 0.00003, 0.0001]:
             lbl = "LL_{}".format(attempt+120)
@@ -484,6 +519,37 @@ if __name__ == '__main__':
             mdl.initialise()
             mdl.train()
             attempt += 1
+    """
+
+    for cmd in sys.argv:
+        if cmd.find("--evaluate=") >= 0:
+            data_idx = cmd.split('=')[1]
+            if len(data_idx)==0:
+                print("No folder for evaluation")
+                exit()
+
+            cfg.data_idx = data_idx
+            cfg.evaluate_chkpoint = 'last'
+            mdl = ModelTrain(cfg=cfg)
+            mdl.initialise()
+            mdl.evaluate()
+            exit()            
 
 
+    for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
+        lbl = "LL_{}".format(attempt+150)
+        cfg.data_idx = lbl
+        cfg._epsilon_start = 1.0
+        cfg._epsilon_end = 0.02
+        cfg._epsilon_decay = 0.00002
+        cfg._clip_layer_names = ["LYR_"]
+        cfg._gradient_clipping = 0.5
+        cfg._target_update_tau = 0.01
+        cfg._target_update_period = 10
+        cfg.kernel_init_type = kernel_init_type
+        cfg._lrn_rate = 0.00002
 
+        mdl = ModelTrain(cfg=cfg)
+        mdl.initialise()
+        mdl.train()
+        attempt += 1
