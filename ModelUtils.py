@@ -75,7 +75,7 @@ def read_results(filename:str) -> list:
             results = [float(item.strip()) for item in results]
     return results
 
-def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
+def save_info2cvs(csv_file:str, data:list, headers:list=None, sformat:str="{:.3f}") -> None:
     """
     Docstring for save_info2cvs
     """
@@ -83,7 +83,7 @@ def save_info2cvs(csv_file:str, data:list, headers:list=None) -> None:
         if headers:
             fd_write.write(",".join(headers)+'\n')
         for ln in data:
-            fd_write.write(",".join(["{:.3f}".format(l) for l in ln])+'\n')
+            fd_write.write(",".join([sformat.format(l) for l in ln])+'\n')
 
 
 def save_info2list(csv_file:str, data:list, name:str) -> None:

@@ -231,14 +231,23 @@ class ModelTrain(object):
         self.q_net = sequential.Sequential([input_lr] + layers + [q_values_layer], input_spec=self._train_env.time_step_spec().observation, name="QNet")
     
     def init_agent(self) -> None:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=self._mcfg.lrn_rate)
+        self.optimizer = None
+        if self._mcfg.dynamic_lrn_rate:
+            lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+                initial_learning_rate=self._mcfg.lrn_rate,   # start higher  0.0001 than your current 0.00002
+                decay_steps=self._mcfg.num_iterations,
+                alpha=0.1                        # floor = 10% of initial = 0.00001
+            )
+            self.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+        else:
+            self.optimizer = tf.keras.optimizers.Adam(learning_rate=self._mcfg.lrn_rate)
+    
         self.train_step_counter = tf.Variable(0)
-
         self.agent = SelectiveClipDqnAgent(
                 self._train_env.time_step_spec(),
                 self._train_env.action_spec(),
                 q_network=self.q_net,
-                optimizer=optimizer,
+                optimizer=self.optimizer,
                 target_update_tau=self._mcfg.target_update_tau,
                 target_update_period=self._mcfg.target_update_period,
                 gradient_clipping=None, #gradient_clipping,
@@ -334,6 +343,13 @@ class ModelTrain(object):
 
         print("Evaluation finished..... {}".format(datetime.now() - tm_start))
 
+    def get_current_lr(self) -> float:
+        """Return the current learning rate regardless of whether it is a
+        fixed float or a callable schedule (e.g. CosineDecay)."""
+        lr = self.optimizer.learning_rate
+        if callable(lr):
+            return float(lr(self.optimizer.iterations))
+        return float(lr)
 
     def train(self) -> None:
         if self._mcfg.if_evaluate_chkpoint:
@@ -375,8 +391,12 @@ class ModelTrain(object):
 
         loss_list = []
         grads = []
+        lrn_rates = []
 
-        mutils.param_gradients(0, self.q_net,grads)
+        mutils.param_gradients(0, self.q_net, grads)
+        if self._mcfg.dynamic_lrn_rate:        
+            #print("LRate {} -> {:.5f}".format(0, self.get_current_lr()))
+            lrn_rates.append([0, self.get_current_lr()])
 
         iterator = iter(self.replay_buffer.as_dataset(sample_batch_size=self._mcfg.batch_size, num_steps=self._mcfg.sequence_length))
 
@@ -407,10 +427,13 @@ class ModelTrain(object):
             epsilon = self._mcfg.epsilon_end + (self._mcfg.epsilon_start - self._mcfg.epsilon_end) * math.exp(-self._mcfg.epsilon_decay * step)
             self.agent.collect_policy._epsilon = epsilon  # inject updated value
 
-            #loss_list.append([step, train_loss.loss, reward_per_batch])
             if step > 0 and step % self._mcfg.log_loss_interval == 0:
                 loss_list.append([step, train_loss.loss])
                 mutils.param_gradients(step, self.q_net, grads, agent=self.agent)
+        
+                if self._mcfg.dynamic_lrn_rate:        
+                    #print("LRate {} -> {:.5f}".format(step, self.get_current_lr()))
+                    lrn_rates.append([step, self.get_current_lr()])
 
 
             if step % self._mcfg.log_interval == 0 and self.debug:
@@ -445,6 +468,9 @@ class ModelTrain(object):
 
         mutils.save_results(self._mcfg.results_file, returns)
         mutils.save_info2cvs(self._mcfg.loss_file, loss_list, ["Step", "Loss"])
+
+        if self._mcfg.dynamic_lrn_rate:        
+            mutils.save_info2cvs(self._mcfg.lrnrt_file, loss_list, ["Step", "LrnRate"], sformat="{:.5f}")
 
         prm_headrs = mutils.param_names(self.q_net)
         mutils.save_info2cvs(self._mcfg.gradient_file, grads, prm_headrs)
@@ -536,20 +562,24 @@ if __name__ == '__main__':
             exit()            
 
 
-    for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
-        lbl = "LL_{}".format(attempt+150)
-        cfg.data_idx = lbl
-        cfg._epsilon_start = 1.0
-        cfg._epsilon_end = 0.02
-        cfg._epsilon_decay = 0.00002
-        cfg._clip_layer_names = ["LYR_"]
-        cfg._gradient_clipping = 0.5
-        cfg._target_update_tau = 0.01
-        cfg._target_update_period = 10
-        cfg.kernel_init_type = kernel_init_type
-        cfg._lrn_rate = 0.00002
+    #for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
+    for grad_clip_names in [["LYR_"]]:
+        for target_update_tau in [0.005]:
+            lbl = "LL_{}".format(attempt+240)
+            cfg._dynamic_lrn_rate = True
+            cfg.data_idx = lbl
+            cfg._epsilon_start = 1.0
+            cfg._epsilon_end = 0.005 #0.02
+            cfg._epsilon_decay = 0.00003 #0.00002
+            cfg._clip_layer_names = grad_clip_names
+            cfg._gradient_clipping = 0.5
+            cfg._target_update_tau = target_update_tau
+            cfg._target_update_period = 20
+            cfg.kernel_init_type = 'GlorotNormal'
+            cfg._lrn_rate = 0.0001 #0.00002 # start higher  0.0001 than your current 0.00002
+            #cfg._dynamic_lrn_rate = True
 
-        mdl = ModelTrain(cfg=cfg)
-        mdl.initialise()
-        mdl.train()
-        attempt += 1
+            mdl = ModelTrain(cfg=cfg)
+            mdl.initialise()
+            mdl.train()
+            attempt += 1

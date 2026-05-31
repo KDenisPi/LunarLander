@@ -18,7 +18,7 @@ class ModelCfg(object):
         #number collected episodes per iteration
         self._collect_episode_per_iteration = 2
         #replay buffer capacity
-        self._replay_buffer_capacity = self.num_iterations*2 if self.num_iterations <= 120000 else self.num_iterations + 50000
+        self._replay_buffer_capacity = self.num_iterations*2 #if self.num_iterations <= 120000 else self.num_iterations + 50000
         #number initially generated records in reply buffer
         self._num_initial_records = 15000
 
@@ -52,6 +52,8 @@ class ModelCfg(object):
         #
         #lerning rate - Adam optimizer parameter (0.001 - 0.0001)
         self._lrn_rate=0.00002
+        self._dynamic_lrn_rate = False
+
         #The discount factor (γ) of future rewards - gamma (0.9-1.0)
         self._gamma=0.99
 
@@ -95,6 +97,7 @@ class ModelCfg(object):
         self._all_results_file = self.data_folder+'results.csv'
 
         self._loss_file = self.data_folder+"loss_{}.csv".format(self.data_idx)
+        self._lrnrt_file = self.data_folder+"lrnrates_{}.csv".format(self.data_idx)
         self._gradient_file = self.data_folder+"pgradients_{}.csv".format(self.data_idx)
 
 
@@ -136,6 +139,9 @@ class ModelCfg(object):
                     tf.keras.initializers.GlorotNormal()
                 )
 
+    @property
+    def dynamic_lrn_rate(self) -> bool:
+        return self._dynamic_lrn_rate
 
     @property
     def checkpoint_dir(self) -> str:
@@ -152,6 +158,10 @@ class ModelCfg(object):
     @property
     def loss_file(self) -> str:
         return self._loss_file
+
+    @property
+    def lrnrt_file(self) -> str:
+        return self._lrnrt_file
 
     @property
     def gradient_file(self) -> str:
@@ -316,5 +326,6 @@ class ModelCfg(object):
     def evaluate_chkpoint(self, val:str) -> None:
         self._evaluate_chkpoint = val
 
+    @property
     def if_evaluate_chkpoint(self) -> bool:
         return len(self._evaluate_chkpoint)>0
