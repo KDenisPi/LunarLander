@@ -82,7 +82,7 @@ class ModelCfg(object):
         self._kernel_init_type = 'VarianceScaling'
 
         #layers size
-        self.layer_sz = [128, 128]
+        self.layer_sz = [256, 256] #[128, 128]
 
         self._data_folder = './data/'
         self._data_idx = "ll_01"
