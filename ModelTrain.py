@@ -234,9 +234,11 @@ class ModelTrain(object):
         self.optimizer = None
         if self._mcfg.dynamic_lrn_rate:
             lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
-                initial_learning_rate=self._mcfg.lrn_rate,   # start higher  0.0001 than your current 0.00002
+                initial_learning_rate=self._mcfg.lrn_rate*5,   # start higher  0.0001 than your current 0.00002
                 decay_steps=self._mcfg.num_iterations,
-                alpha=0.1                        # floor = 10% of initial = 0.00001
+                alpha=0.1,                        # floor = 10% of initial = 0.00001
+                warmup_target=self._mcfg.lrn_rate,
+                warmup_steps=self._mcfg.num_iterations
             )
             self.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
         else:
@@ -470,7 +472,7 @@ class ModelTrain(object):
         mutils.save_info2cvs(self._mcfg.loss_file, loss_list, ["Step", "Loss"])
 
         if self._mcfg.dynamic_lrn_rate:        
-            mutils.save_info2cvs(self._mcfg.lrnrt_file, loss_list, ["Step", "LrnRate"], sformat="{:.5f}")
+            mutils.save_info2cvs(self._mcfg.lrnrt_file, lrn_rates, ["Step", "LrnRate"], sformat="{:.5f}")
 
         prm_headrs = mutils.param_names(self.q_net)
         mutils.save_info2cvs(self._mcfg.gradient_file, grads, prm_headrs)
@@ -564,8 +566,8 @@ if __name__ == '__main__':
 
     #for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
     for grad_clip_names in [["LYR_"]]:
-        for target_update_tau in [0.005]:
-            lbl = "LL_{}".format(attempt+240)
+        for target_update_tau in [0.005,]:
+            lbl = "LL_{}".format(attempt+247)
             cfg._dynamic_lrn_rate = True
             cfg.data_idx = lbl
             cfg._epsilon_start = 1.0
@@ -576,7 +578,7 @@ if __name__ == '__main__':
             cfg._target_update_tau = target_update_tau
             cfg._target_update_period = 20
             cfg.kernel_init_type = 'GlorotNormal'
-            cfg._lrn_rate = 0.0001 #0.00002 # start higher  0.0001 than your current 0.00002
+            cfg._lrn_rate = 0.00002 #0.00002 # start higher  0.0001 than your current 0.00002
             #cfg._dynamic_lrn_rate = True
 
             mdl = ModelTrain(cfg=cfg)
