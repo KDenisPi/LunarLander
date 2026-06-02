@@ -88,7 +88,7 @@ class SelectiveClipDqnAgent(dqn_agent.DqnAgent):
                 self._grad_norm_vars[i].assign(tf.norm(grad))
             else:
                 self._grad_norm_vars[i].assign(0.0)
-        self.train_step_counter.assign_add(1)
+        #self.train_step_counter.assign_add(1)
         return loss_info
 
 
@@ -129,7 +129,7 @@ class ModelTrain(object):
         self.ckpt = None
         self.ckpt_manager = None
         self.ckpt_restored=False
-        
+
         self._debug = False
 
     @property
@@ -137,7 +137,7 @@ class ModelTrain(object):
         return self._debug
     @debug.setter
     def debug(self, val:bool) -> None:
-        self._debug = val        
+        self._debug = val
 
     def initialise(self) -> None:
         self.init_qnet()
@@ -229,7 +229,7 @@ class ModelTrain(object):
             bias_initializer=self._mcfg.bias_lyr_out)
 
         self.q_net = sequential.Sequential([input_lr] + layers + [q_values_layer], input_spec=self._train_env.time_step_spec().observation, name="QNet")
-    
+
     def init_agent(self) -> None:
         self.optimizer = None
         if self._mcfg.dynamic_lrn_rate:
@@ -238,12 +238,12 @@ class ModelTrain(object):
                 decay_steps=self._mcfg.num_iterations,
                 alpha=0.05,                        # floor = 5% of initial = 5e-6, not 1e-5
                 warmup_target=self._mcfg.lrn_rate,
-                warmup_steps=self._mcfg.num_iterations
+                warmup_steps=self._mcfg.num_iterations * 0.1
             )
             self.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
         else:
             self.optimizer = tf.keras.optimizers.Adam(learning_rate=self._mcfg.lrn_rate)
-    
+
         self.train_step_counter = tf.Variable(0)
         self.agent = SelectiveClipDqnAgent(
                 self._train_env.time_step_spec(),
@@ -274,7 +274,7 @@ class ModelTrain(object):
         table = reverb.Table(
             table_name,
             max_size=self._mcfg.replay_buffer_capacity,
-            sampler=reverb.selectors.Uniform(), #reverb.selectors.Lifo(),
+            sampler=reverb.selectors.Prioritized(priority_exponent=0.6), #reverb.selectors.Uniform(),
             remover=reverb.selectors.Fifo(),
             rate_limiter=reverb.rate_limiters.MinSize(1),
             signature=replay_buffer_signature
@@ -388,15 +388,14 @@ class ModelTrain(object):
 
         tm_start = datetime.now()
 
-        reward_counter = 0.0
-        loss_counter = 0.0
-
         loss_list = []
         grads = []
         lrn_rates = []
 
+        loss_counter = 0.0
+
         mutils.param_gradients(0, self.q_net, grads)
-        if self._mcfg.dynamic_lrn_rate:        
+        if self._mcfg.dynamic_lrn_rate:
             #print("LRate {} -> {:.5f}".format(0, self.get_current_lr()))
             lrn_rates.append([0, self.get_current_lr()])
 
@@ -417,11 +416,9 @@ class ModelTrain(object):
             # Use data from the buffer and update the agent's network.
             trajectories, _ = next(iterator)
             train_loss = self.agent.train(experience=trajectories)
+            loss_counter += train_loss.loss
 
             reward_per_batch = (np.sum(trajectories.reward.numpy())/self._mcfg.batch_size)
-            reward_counter = reward_counter + reward_per_batch
-
-            loss_counter = loss_counter + train_loss.loss
 
             step = self.agent.train_step_counter.numpy()
 
@@ -430,16 +427,18 @@ class ModelTrain(object):
             self.agent.collect_policy._epsilon = epsilon  # inject updated value
 
             if step > 0 and step % self._mcfg.log_loss_interval == 0:
-                loss_list.append([step, train_loss.loss])
+                loss_list.append([step, loss_counter/self._mcfg.log_loss_interval])
+                loss_counter = 0.0
+
                 mutils.param_gradients(step, self.q_net, grads, agent=self.agent)
-        
-                if self._mcfg.dynamic_lrn_rate:        
+
+                if self._mcfg.dynamic_lrn_rate:
                     #print("LRate {} -> {:.5f}".format(step, self.get_current_lr()))
                     lrn_rates.append([step, self.get_current_lr()])
 
 
             if step % self._mcfg.log_interval == 0 and self.debug:
-                print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4} Frames: {5}'.format(step, 
+                print('step = {0}: loss = {1:0.3f} Reward: {2:0.3f} ε={3:.4f} Sec. {4} Frames: {5}'.format(step,
                         train_loss.loss, reward_per_batch, epsilon, (datetime.now()-tm_start).seconds, num_frames))
 
             if step > 0 and step % self._mcfg.eval_interval == 0:
@@ -471,7 +470,7 @@ class ModelTrain(object):
         mutils.save_results(self._mcfg.results_file, returns)
         mutils.save_info2cvs(self._mcfg.loss_file, loss_list, ["Step", "Loss"])
 
-        if self._mcfg.dynamic_lrn_rate:        
+        if self._mcfg.dynamic_lrn_rate:
             mutils.save_info2cvs(self._mcfg.lrnrt_file, lrn_rates, ["Step", "LrnRate"], sformat="{:.5f}")
 
         prm_headrs = mutils.param_names(self.q_net)
@@ -481,11 +480,11 @@ class ModelTrain(object):
 
         #['Date', 'Name', 'Duration','NumIterations', 'BatchSize','UpTau', 'UpPrd', 'LrnRate', 'Gamma', 'Eps_Start', 'Eps_End', 'Eps_decay', 'GradClip', 'InitRecords', 'KernelInitType']
 
-        mutils.save_parameters(tm_start, self._mcfg.data_idx, [self._mcfg.num_iterations, self._mcfg.batch_size, self._mcfg.target_update_tau, 
+        mutils.save_parameters(tm_start, self._mcfg.data_idx, [self._mcfg.num_iterations, self._mcfg.batch_size, self._mcfg.target_update_tau,
                         self._mcfg.target_update_period, self._mcfg.lrn_rate, self._mcfg.gamma,
                         self._mcfg.epsilon_start, self._mcfg.epsilon_end, self._mcfg.epsilon_decay,
                         self._mcfg.gradient_clipping, self._mcfg.num_initial_records, self._mcfg.kernel_init_type],
-                        self._mcfg.layer_sz, 
+                        self._mcfg.layer_sz,
                         self._mcfg.clip_layer_names)
 
         print("Training finished..... {}".format(datetime.now() - tm_start))
@@ -561,7 +560,7 @@ if __name__ == '__main__':
             mdl = ModelTrain(cfg=cfg)
             mdl.initialise()
             mdl.evaluate()
-            exit()            
+            exit()
 
 
     #for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
@@ -579,7 +578,7 @@ if __name__ == '__main__':
         cfg._target_update_tau    = 0.01      # faster target tracking
         cfg._target_update_period = 10
 
-        cfg._num_initial_records  = 20000     # more warm-up before learning starts            
+        cfg._num_initial_records  = 20000     # more warm-up before learning start
 
         cfg._clip_layer_names = grad_clip_names
         cfg._gradient_clipping = 0.5
