@@ -236,7 +236,7 @@ class ModelTrain(object):
             lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
                 initial_learning_rate=self._mcfg.lrn_rate*5,   # start higher  0.0001 than your current 0.00002
                 decay_steps=self._mcfg.num_iterations,
-                alpha=0.1,                        # floor = 10% of initial = 0.00001
+                alpha=0.05,                        # floor = 5% of initial = 5e-6, not 1e-5
                 warmup_target=self._mcfg.lrn_rate,
                 warmup_steps=self._mcfg.num_iterations
             )
@@ -566,22 +566,26 @@ if __name__ == '__main__':
 
     #for kernel_init_type in ['VarianceScaling', 'GlorotNormal', 'GlorotUniform']:
     for grad_clip_names in [["LYR_"]]:
-        for target_update_tau in [0.005,]:
-            lbl = "LL_{}".format(attempt+247)
-            cfg._dynamic_lrn_rate = True
-            cfg.data_idx = lbl
-            cfg._epsilon_start = 1.0
-            cfg._epsilon_end = 0.005 #0.02
-            cfg._epsilon_decay = 0.00003 #0.00002
-            cfg._clip_layer_names = grad_clip_names
-            cfg._gradient_clipping = 0.5
-            cfg._target_update_tau = target_update_tau
-            cfg._target_update_period = 20
-            cfg.kernel_init_type = 'GlorotNormal'
-            cfg._lrn_rate = 0.00002 #0.00002 # start higher  0.0001 than your current 0.00002
-            #cfg._dynamic_lrn_rate = True
+        #for target_update_tau in [0.005]:
+        lbl = "LL_{}".format(attempt+249)
+        cfg.data_idx = lbl
+        cfg._lrn_rate         = 0.0001        # actual cosine start (was likely 0.00002)
+        cfg._dynamic_lrn_rate = True          # keep cosine, but fix alpha:
+        # In init_agent: alpha=0.05 instead of 0.1 (floor at 5000e-4, not 1e-5)
+        cfg._epsilon_start = 1.0
+        cfg._epsilon_decay    = 0.00006       # reach ~ε_end by step ~80k
+        cfg._epsilon_end      = 0.01
 
-            mdl = ModelTrain(cfg=cfg)
-            mdl.initialise()
-            mdl.train()
-            attempt += 1
+        cfg._target_update_tau    = 0.01      # faster target tracking
+        cfg._target_update_period = 10
+
+        cfg._num_initial_records  = 20000     # more warm-up before learning starts            
+
+        cfg._clip_layer_names = grad_clip_names
+        cfg._gradient_clipping = 0.5
+        cfg.kernel_init_type = 'GlorotNormal'
+
+        mdl = ModelTrain(cfg=cfg)
+        mdl.initialise()
+        mdl.train()
+        attempt += 1
