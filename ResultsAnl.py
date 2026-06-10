@@ -17,9 +17,10 @@ for cmd in sys.argv:
 selected = []
 
 for res in results_n:
-    sum_last = sum(res[-5:])
+    #print(res)
+    sum_last = sum(res[-5:]) if len(res) > 6  else sum(res[1:])
     if sum_last > 0:
-        print("{} {} {}".format(res[0], sum_last, res[-5:]))
+        print("{} {:.5f} {}".format(res[0], sum_last, res[-5:]))
         selected.append(res[0])
 
 #print(selected)
