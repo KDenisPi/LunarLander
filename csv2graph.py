@@ -106,13 +106,15 @@ if __name__ == '__main__':
         print("Missing CSV file.\nUsage csv2graph.py file.csv [--output=filename.png] [--labels=custon.csv]")
         exit()
 
+    #Do not forget to mask * in request
+    print(sys.argv[1])
     csv_files = glob.glob(sys.argv[1])
 
     img_file_custom = ""
 
     for pcmd in sys.argv[1:]:
         prms = pcmd.split("=")
-        print(pcmd)
+        #print(pcmd)
         if prms[0] == "--labels":
             """Load labels if it is presented"""
             labels = gen.load_labels(prms[1])
@@ -123,5 +125,6 @@ if __name__ == '__main__':
     for csv_file in csv_files:
         img_file = img_file_custom if len(img_file_custom)>0 else gen.csv2img_filename(csv_file)
 
+        print(f"{csv_file} --> {img_file}")
         gen.data_file = csv_file
         gen.generate_img(img_file, labels)
